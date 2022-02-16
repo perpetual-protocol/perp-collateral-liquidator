@@ -1,0 +1,73 @@
+{
+    "solidity.packageDefaultDependenciesDirectory": "node_modules",
+    "solidity.packageDefaultDependenciesContractsDirectory": "",
+    "solidity.enabledAsYouTypeCompilationErrorCheck": true,
+    "solidity.linter": "solhint",
+    "editor.formatOnSave": false,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.tabSize": 4,
+    "[json]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[javascript]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+        }
+    },
+    "[typescript]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+        }
+    },
+    "[typescriptreact]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+        }
+    },
+    "[solidity]": {
+        "editor.formatOnSave": true,
+    },
+    "cSpell.enabled": true,
+    "cSpell.enableFiletypes": ["solidity", "javascript", "typescript"],
+    "cSpell.words": [
+        "abicoder",
+        "Agos",
+        "Arbitrum",
+        "bignumber",
+        "bips",
+        "BUSL",
+        "bytecode",
+        "chainlink",
+        "Cumulatives",
+        "delegatecall",
+        "ethersproject",
+        "ETHUSD",
+        "IERC",
+        "initializable",
+        "inheritdoc",
+        "keccak",
+        "lushan",
+        "Mintable",
+        "mixedcase",
+        "nomiclabs",
+        "Numberish",
+        "perp",
+        "Reentrancy",
+        "returndatasize",
+        "SLOAD",
+        "sloads",
+        "smockit",
+        "solhint",
+        "SPDX",
+        "struct",
+        "twap",
+        "Twaps",
+        "typechain",
+        "VUSD"
+    ],
+    "solidity.defaultCompiler": "localNodeModule",
+}
