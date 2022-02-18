@@ -8,7 +8,8 @@
   },
   "main": "index.js",
   "scripts": {
-    "build": "hardhat compile"
+    "build": "hardhat compile",
+    "test": "hardhat test"
   },
   "devDependencies": {
     "@eth-optimism/smock": "1.1.4",
@@ -18,10 +19,11 @@
     "@ethereumjs/tx": "3.2.0",
     "@ethereumjs/vm": "5.4.0",
     "@nomiclabs/ethereumjs-vm": "4.2.2",
+    "@nomiclabs/hardhat-ethers": "2.0.5",
     "@nomiclabs/hardhat-etherscan": "2.1.7",
     "@nomiclabs/hardhat-waffle": "2.0.1",
     "@openzeppelin/contracts": "3.4.0",
-    "@perp/lushan": "^0.12.7",
+    "@perp/lushan": "0.12.7",
     "@typechain/ethers-v5": "7.0.0",
     "@typechain/hardhat": "2.0.1",
     "@types/chai": "4.2.18",
@@ -30,7 +32,7 @@
     "@types/mocha": "9.0.0",
     "@types/node": "15.6.1",
     "@uniswap/v3-core": "https://github.com/Uniswap/uniswap-v3-core/tarball/v1.0.0",
-    "@uniswap/v3-periphery": "1.0.1",
+    "@uniswap/v3-periphery": "https://github.com/Uniswap/uniswap-v3-periphery/tarball/v1.0.1",
     "bignumber.js": "9.0.1",
     "chai": "4.3.4",
     "eslint-config-prettier": "8.3.0",
