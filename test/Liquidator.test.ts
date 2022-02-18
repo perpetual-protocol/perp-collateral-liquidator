@@ -1,7 +1,4 @@
 import { waffle } from "hardhat"
-import {
-    Liquidator,
-} from "../typechain"
 import { createFixture } from "./fixtures"
 
 describe("Liquidator", () => {

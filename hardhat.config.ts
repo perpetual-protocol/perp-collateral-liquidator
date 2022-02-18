@@ -72,6 +72,7 @@ const config: HardhatUserConfig = {
             "@uniswap/v3-core/contracts/UniswapV3Factory.sol",
             "@uniswap/v3-core/contracts/UniswapV3Pool.sol",
             "@uniswap/v3-periphery/contracts/SwapRouter.sol",
+            "@perp/curie-contract/contracts/",
         ],
     },
     external: {
