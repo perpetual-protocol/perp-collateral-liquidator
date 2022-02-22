@@ -9,11 +9,12 @@
   "main": "index.js",
   "scripts": {
     "clean": "rm -rf typechain && rm -rf artifacts && rm -rf cache",
-    "typechain": "npm run typechain-perp-curie && npm run typechain-uniswap-v3-core && npm run typechain-uniswap-v3-periphery && npm run typechain-test",
+    "typechain": "npm run typechain-perp-oracle && npm run typechain-perp-curie && npm run typechain-uniswap-v3-core && npm run typechain-uniswap-v3-periphery && npm run typechain-test",
     "typechain-uniswap-v3-core": "typechain --target ethers-v5 --out-dir ./typechain/uniswap-v3-core ./node_modules/@uniswap/v3-core/artifacts/contracts/**/*.json",
     "typechain-uniswap-v3-periphery": "typechain --target ethers-v5 --out-dir ./typechain/uniswap-v3-periphery ./node_modules/@uniswap/v3-periphery/artifacts/contracts/**/*.json",
+    "typechain-perp-oracle": "typechain --target ethers-v5 --out-dir ./typechain/perp-oracle ./node_modules/@perp/perp-oracle-contract/artifacts/contracts/**/*.json",
     "typechain-perp-curie": "typechain --target ethers-v5 --out-dir ./typechain/perp-curie ./node_modules/@perp/curie-contract/artifacts/contracts/**/*.json",
-    "typechain-test": "typechain --target ethers-v5 --out-dir ./typechain/test ./test/contracts/**/*.json",
+    "typechain-test": "typechain --target ethers-v5 --out-dir ./typechain/test ./test/artifacts/**/*.json",
     "build": "npm run typechain && hardhat compile",
     "test": "hardhat test"
   },
@@ -30,6 +31,7 @@
     "@nomiclabs/hardhat-waffle": "2.0.1",
     "@openzeppelin/contracts": "3.4.0",
     "@perp/curie-contract": "1.0.15",
+    "@perp/perp-oracle-contract": "0.2.2",
     "@typechain/ethers-v5": "7.0.0",
     "@typechain/hardhat": "2.0.1",
     "@types/chai": "4.2.18",

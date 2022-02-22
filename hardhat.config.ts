@@ -80,10 +80,13 @@ const config: HardhatUserConfig = {
                 artifacts: "node_modules/@uniswap/v3-periphery/artifacts/contracts",
             },
             {
+                artifacts: "node_modules/@perp/perp-oracle-contract/artifacts/contracts",
+            },
+            {
                 artifacts: "node_modules/@perp/curie-contract/artifacts/contracts",
             },
             {
-                artifacts: "test/contracts",
+                artifacts: "test/artifacts",
             },
         ],
     },

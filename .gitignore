@@ -1,5 +1,5 @@
-artifacts
-cache
+/artifacts
+/cache
 node_modules
 coverage.json
 coverage
