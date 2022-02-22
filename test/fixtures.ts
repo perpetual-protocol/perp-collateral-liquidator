@@ -5,6 +5,8 @@ import {
     IWETH9,
     SwapRouter as UniswapRouter,
     UniswapV3Factory,
+} from "../typechain"
+import {
     AccountBalance,
     BaseToken,
     ClearingHouse,
@@ -13,35 +15,30 @@ import {
     InsuranceFund,
     MarketRegistry,
     OrderBook,
-    TestClearingHouse,
-    TestERC20,
-    TestExchange,
-    UniswapV3Factory,
-    UniswapV3Pool,
     Vault,
-} from "../typechain"
+} from "../typechain/perp-curie"
 
 export interface Fixture {
     // liquidator: Liquidator
     uniV3Factory: UniswapV3Factory
     uniV3Router: UniswapRouter
-    clearingHouse: TestClearingHouse | ClearingHouse
-    orderBook: OrderBook
-    accountBalance: TestAccountBalance | AccountBalance
-    marketRegistry: MarketRegistry
-    clearingHouseConfig: ClearingHouseConfig
-    exchange: TestExchange | Exchange
-    vault: Vault
-    insuranceFund: InsuranceFund
-    pool: UniswapV3Pool
-    uniFeeTier: number
-    USDC: TestERC20
-    quoteToken: QuoteToken
-    baseToken: BaseToken
-    mockedBaseAggregator: MockContract
-    baseToken2: BaseToken
-    mockedBaseAggregator2: MockContract
-    pool2: UniswapV3Pool
+    // clearingHouse: TestClearingHouse | ClearingHouse
+    // orderBook: OrderBook
+    // accountBalance: TestAccountBalance | AccountBalance
+    // marketRegistry: MarketRegistry
+    // clearingHouseConfig: ClearingHouseConfig
+    // exchange: TestExchange | Exchange
+    // vault: Vault
+    // insuranceFund: InsuranceFund
+    // pool: UniswapV3Pool
+    // uniFeeTier: number
+    // USDC: TestERC20
+    // quoteToken: QuoteToken
+    // baseToken: BaseToken
+    // mockedBaseAggregator: MockContract
+    // baseToken2: BaseToken
+    // mockedBaseAggregator2: MockContract
+    // pool2: UniswapV3Pool
 }
 
 export function createFixture(): () => Promise<Fixture> {
@@ -58,6 +55,12 @@ export function createFixture(): () => Promise<Fixture> {
         const uniV3Router = (await (
             await ethers.getContractFactory("SwapRouter")
         ).deploy(uniV3Factory.address, weth9.address)) as unknown as UniswapRouter
+
+        // TODO test
+        const clearingHouseConfigFactory = await ethers.getContractFactory("ClearingHouseConfig")
+        const clearingHouseConfig = (await clearingHouseConfigFactory.deploy()) as ClearingHouseConfig
+        await clearingHouseConfig.initialize()
+        console.log("clearingHouseConfig:", clearingHouseConfig)
 
         return {
             uniV3Factory,

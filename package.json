@@ -9,7 +9,9 @@
   "main": "index.js",
   "scripts": {
     "clean": "rm -rf typechain && rm -rf artifacts && rm -rf cache",
-    "build": "hardhat compile",
+    "typechain": "npm run typechain-perp-curie",
+    "typechain-perp-curie": "typechain --target ethers-v5 --out-dir ./typechain/perp-curie ./node_modules/@perp/curie-contract/artifacts/contracts/**/*.json",
+    "build": "npm run typechain && hardhat compile",
     "test": "hardhat test"
   },
   "devDependencies": {

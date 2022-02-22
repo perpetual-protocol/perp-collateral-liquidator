@@ -10,6 +10,8 @@ import { HardhatUserConfig, task } from "hardhat/config"
 import "solidity-coverage"
 import "./mocha-test"
 import { getMnemonic, getUrl, hardhatForkConfig } from "./scripts/hardhatConfig"
+import fs from "fs"
+import path from "path"
 
 enum ChainId {
     OPTIMISM_CHAIN_ID = 10,
@@ -72,14 +74,20 @@ const config: HardhatUserConfig = {
             "@uniswap/v3-core/contracts/UniswapV3Factory.sol",
             "@uniswap/v3-core/contracts/UniswapV3Pool.sol",
             "@uniswap/v3-periphery/contracts/SwapRouter.sol",
-            "@perp/curie-contract/contracts/",
+          // TODO does not work
+          //   ...getAllFiles("node_modules/@perp/curie-contract/contracts/")
+          //     .map(file => path.relative("node_modules/", file)),
         ],
     },
+    // so we can load the contract artifacts in tests
     external: {
         contracts: [
             {
                 artifacts: "node_modules/@openzeppelin/contracts/build",
             },
+            {
+                artifacts: "node_modules/@perp/curie-contract/artifacts/contracts",
+            }
         ],
     },
     contractSizer: {
@@ -96,6 +104,22 @@ const config: HardhatUserConfig = {
         timeout: 120000,
         color: true,
     },
+}
+
+function getAllFiles(dirPath: string, arrayOfFiles: string[] = []) {
+    const files = fs.readdirSync(dirPath)
+
+    arrayOfFiles = arrayOfFiles || []
+
+    files.forEach(function(file) {
+        if (fs.statSync(dirPath + "/" + file).isDirectory()) {
+            arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles)
+        } else {
+            arrayOfFiles.push(path.join(dirPath, "/", file))
+        }
+    })
+
+    return arrayOfFiles
 }
 
 export default config
