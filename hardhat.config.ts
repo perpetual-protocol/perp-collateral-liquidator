@@ -1,17 +1,16 @@
 import "@nomiclabs/hardhat-ethers"
 import "@nomiclabs/hardhat-waffle"
 import "@typechain/hardhat"
+import fs from "fs"
 import "hardhat-contract-sizer"
-import "hardhat-dependency-compiler"
 import "hardhat-deploy"
 import "hardhat-deploy-ethers"
 import "hardhat-gas-reporter"
-import { HardhatUserConfig, task } from "hardhat/config"
+import { HardhatUserConfig } from "hardhat/config"
+import path from "path"
 import "solidity-coverage"
 import "./mocha-test"
 import { getMnemonic, getUrl, hardhatForkConfig } from "./scripts/hardhatConfig"
-import fs from "fs"
-import path from "path"
 
 enum ChainId {
     OPTIMISM_CHAIN_ID = 10,
@@ -68,17 +67,6 @@ const config: HardhatUserConfig = {
             [ChainId.OPTIMISM_KOVAN_CHAIN_ID]: "",
         },
     },
-    dependencyCompiler: {
-        // We have to compile from source since UniswapV3 doesn't provide artifacts in their npm package
-        paths: [
-            "@uniswap/v3-core/contracts/UniswapV3Factory.sol",
-            "@uniswap/v3-core/contracts/UniswapV3Pool.sol",
-            "@uniswap/v3-periphery/contracts/SwapRouter.sol",
-          // TODO does not work
-          //   ...getAllFiles("node_modules/@perp/curie-contract/contracts/")
-          //     .map(file => path.relative("node_modules/", file)),
-        ],
-    },
     // so we can load the contract artifacts in tests
     external: {
         contracts: [
@@ -86,8 +74,17 @@ const config: HardhatUserConfig = {
                 artifacts: "node_modules/@openzeppelin/contracts/build",
             },
             {
+                artifacts: "node_modules/@uniswap/v3-core/artifacts/contracts",
+            },
+            {
+                artifacts: "node_modules/@uniswap/v3-periphery/artifacts/contracts",
+            },
+            {
                 artifacts: "node_modules/@perp/curie-contract/artifacts/contracts",
-            }
+            },
+            {
+                artifacts: "test/contracts",
+            },
         ],
     },
     contractSizer: {
@@ -111,7 +108,7 @@ function getAllFiles(dirPath: string, arrayOfFiles: string[] = []) {
 
     arrayOfFiles = arrayOfFiles || []
 
-    files.forEach(function(file) {
+    files.forEach(function (file) {
         if (fs.statSync(dirPath + "/" + file).isDirectory()) {
             arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles)
         } else {
