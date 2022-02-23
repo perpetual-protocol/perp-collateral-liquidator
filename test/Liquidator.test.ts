@@ -1,7 +1,4 @@
 import { waffle } from "hardhat"
-import {
-    Liquidator,
-} from "../typechain"
 import { createFixture } from "./fixtures"
 
 describe("Liquidator", () => {
@@ -11,6 +8,9 @@ describe("Liquidator", () => {
 
     beforeEach(async () => {
         const _fixture = await loadFixture(createFixture())
+
+        // TODO test
+        console.log("clearingHouse:", _fixture.clearingHouse)
 
         // liquidator = _fixture.liquidator
     })

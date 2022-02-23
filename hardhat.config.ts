@@ -1,12 +1,13 @@
 import "@nomiclabs/hardhat-ethers"
 import "@nomiclabs/hardhat-waffle"
 import "@typechain/hardhat"
+import fs from "fs"
 import "hardhat-contract-sizer"
-import "hardhat-dependency-compiler"
 import "hardhat-deploy"
 import "hardhat-deploy-ethers"
 import "hardhat-gas-reporter"
-import { HardhatUserConfig, task } from "hardhat/config"
+import { HardhatUserConfig } from "hardhat/config"
+import path from "path"
 import "solidity-coverage"
 import "./mocha-test"
 import { getMnemonic, getUrl, hardhatForkConfig } from "./scripts/hardhatConfig"
@@ -66,18 +67,26 @@ const config: HardhatUserConfig = {
             [ChainId.OPTIMISM_KOVAN_CHAIN_ID]: "",
         },
     },
-    dependencyCompiler: {
-        // We have to compile from source since UniswapV3 doesn't provide artifacts in their npm package
-        paths: [
-            "@uniswap/v3-core/contracts/UniswapV3Factory.sol",
-            "@uniswap/v3-core/contracts/UniswapV3Pool.sol",
-            "@uniswap/v3-periphery/contracts/SwapRouter.sol",
-        ],
-    },
+    // so we can load the contract artifacts in tests
     external: {
         contracts: [
             {
                 artifacts: "node_modules/@openzeppelin/contracts/build",
+            },
+            {
+                artifacts: "node_modules/@uniswap/v3-core/artifacts/contracts",
+            },
+            {
+                artifacts: "node_modules/@uniswap/v3-periphery/artifacts/contracts",
+            },
+            {
+                artifacts: "node_modules/@perp/perp-oracle-contract/artifacts/contracts",
+            },
+            {
+                artifacts: "node_modules/@perp/curie-contract/artifacts/contracts",
+            },
+            {
+                artifacts: "test/artifacts",
             },
         ],
     },
@@ -95,6 +104,22 @@ const config: HardhatUserConfig = {
         timeout: 120000,
         color: true,
     },
+}
+
+function getAllFiles(dirPath: string, arrayOfFiles: string[] = []) {
+    const files = fs.readdirSync(dirPath)
+
+    arrayOfFiles = arrayOfFiles || []
+
+    files.forEach(function (file) {
+        if (fs.statSync(dirPath + "/" + file).isDirectory()) {
+            arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles)
+        } else {
+            arrayOfFiles.push(path.join(dirPath, "/", file))
+        }
+    })
+
+    return arrayOfFiles
 }
 
 export default config
