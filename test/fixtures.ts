@@ -1,5 +1,6 @@
-import { MockContract, smockit } from "@eth-optimism/smock"
-import { ethers, waffle } from "hardhat"
+import { MockContract } from "@eth-optimism/smock"
+import { ethers } from "hardhat"
+import { Liquidator } from "../typechain"
 import {
     AccountBalance,
     BaseToken,
@@ -12,13 +13,13 @@ import {
     QuoteToken,
     Vault,
 } from "../typechain/perp-curie"
-import { WETH9, TestERC20 } from "../typechain/test"
+import { TestERC20, WETH9 } from "../typechain/test"
 import { UniswapV3Factory, UniswapV3Pool } from "../typechain/uniswap-v3-core"
 import { SwapRouter as UniswapRouter } from "../typechain/uniswap-v3-periphery"
-import { tokensFixture, token0Fixture } from "./shared/fixtures"
+import { token0Fixture, tokensFixture } from "./shared/fixtures"
 
 export interface Fixture {
-    // liquidator: Liquidator
+    liquidator: Liquidator
     uniV3Factory: UniswapV3Factory
     uniV3Router: UniswapRouter
     clearingHouse: ClearingHouse
@@ -111,10 +112,10 @@ export function createFixture(): () => Promise<Fixture> {
         const vaultFactory = await ethers.getContractFactory("Vault")
         const vault = (await vaultFactory.deploy()) as Vault
         await vault.initialize(
-          insuranceFund.address,
-          clearingHouseConfig.address,
-          accountBalance.address,
-          exchange.address,
+            insuranceFund.address,
+            clearingHouseConfig.address,
+            accountBalance.address,
+            exchange.address,
         )
         await insuranceFund.setBorrower(vault.address)
         await accountBalance.setVault(vault.address)
@@ -140,13 +141,13 @@ export function createFixture(): () => Promise<Fixture> {
         const clearingHouseFactory = await ethers.getContractFactory("ClearingHouse")
         const clearingHouse = (await clearingHouseFactory.deploy()) as ClearingHouse
         await clearingHouse.initialize(
-          clearingHouseConfig.address,
-          vault.address,
-          quoteToken.address,
-          uniV3Factory.address,
-          exchange.address,
-          accountBalance.address,
-          insuranceFund.address,
+            clearingHouseConfig.address,
+            vault.address,
+            quoteToken.address,
+            uniV3Factory.address,
+            exchange.address,
+            accountBalance.address,
+            insuranceFund.address,
         )
 
         await clearingHouseConfig.setSettlementTokenBalanceCap(ethers.constants.MaxUint256)
@@ -162,7 +163,16 @@ export function createFixture(): () => Promise<Fixture> {
         await accountBalance.setClearingHouse(clearingHouse.address)
         await vault.setClearingHouse(clearingHouse.address)
 
+        // ======================================
+        // deploy liquidator
+        //
+
+        const liquidatorFactory = await ethers.getContractFactory("Liquidator")
+        const liquidator = (await liquidatorFactory.deploy()) as Liquidator
+        await liquidator.initialize(vault.address, uniV3Router.address)
+
         return {
+            liquidator,
             uniV3Factory,
             uniV3Router,
             clearingHouse,
