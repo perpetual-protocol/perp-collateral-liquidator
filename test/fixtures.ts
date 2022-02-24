@@ -47,12 +47,12 @@ export function createFixture(): () => Promise<Fixture> {
         // deploy UniV3 ecosystem
         //
         const factoryFactory = await ethers.getContractFactory("UniswapV3Factory")
-        const uniV3Factory = (await factoryFactory.deploy()) as unknown as UniswapV3Factory
+        const uniV3Factory = (await factoryFactory.deploy()) as UniswapV3Factory
         const weth9Factory = await ethers.getContractFactory("WETH9")
         const weth9 = (await weth9Factory.deploy()) as WETH9
         const uniV3Router = (await (
             await ethers.getContractFactory("SwapRouter")
-        ).deploy(uniV3Factory.address, weth9.address)) as unknown as UniswapRouter
+        ).deploy(uniV3Factory.address, weth9.address)) as UniswapRouter
 
         // ======================================
         // deploy perp v2 ecosystem

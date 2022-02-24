@@ -10,10 +10,10 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IUniswapV3SwapCallback } from "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3SwapCallback.sol";
 import { IUniswapV3Pool } from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import { TickMath } from "@uniswap/v3-core/contracts/libraries/TickMath.sol";
+import { IPeripheryImmutableState } from "@uniswap/v3-periphery/contracts/interfaces/IPeripheryImmutableState.sol";
 import { ISwapRouter } from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-import { SwapRouter } from "@uniswap/v3-periphery/contracts/SwapRouter.sol";
 import { PoolAddress } from "@uniswap/v3-periphery/contracts/libraries/PoolAddress.sol";
-import { Collateral } from "@perp/curie-contract/contracts/lib/Collateral.sol";
+// import { Collateral } from "@perp/curie-contract/contracts/lib/Collateral.sol";
 import { IVault } from "@perp/curie-contract/contracts/interface/IVault.sol";
 
 contract Liquidator is IUniswapV3SwapCallback, Ownable {
@@ -119,18 +119,17 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
     }
 
     function getMaxProfitableCollateral(address trader) external view returns (address targetCollateral) {
-        address[] memory collaterals = IVault(_vault).getCollateralTokens(trader);
-        uint256 collateralLength = collaterals.length;
-        uint256 maxValue = 0;
-        targetCollateral = address(0x0);
-
-        for (uint256 i = 0; i < collateralLength; i++) {
-            uint256 value = IVault(_vault).getMaxLiquidationValue(trader, collaterals[i]);
-            if (value > maxValue) {
-                maxValue = value;
-                targetCollateral = collaterals[i];
-            }
-        }
+        // address[] memory collaterals = IVault(_vault).getCollateralTokens(trader);
+        // uint256 collateralLength = collaterals.length;
+        // uint256 maxValue = 0;
+        // targetCollateral = address(0x0);
+        // for (uint256 i = 0; i < collateralLength; i++) {
+        //     uint256 value = IVault(_vault).getMaxLiquidationValue(trader, collaterals[i]);
+        //     if (value > maxValue) {
+        //         maxValue = value;
+        //         targetCollateral = collaterals[i];
+        //     }
+        // }
     }
 
     //
@@ -144,7 +143,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
     ) private view returns (address) {
         return
             PoolAddress.computeAddress(
-                SwapRouter(payable(_swapRouter)).factory(),
+                IPeripheryImmutableState(_swapRouter).factory(),
                 PoolAddress.getPoolKey(tokenA, tokenB, fee)
             );
     }
