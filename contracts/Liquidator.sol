@@ -69,7 +69,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
             require(exactIn >= data.minSettlementAmount, "L_LTMSTP");
         }
 
-        // should check if there is no data.path.length amountOutMinimum: data.minSettlementAmount
+        // TODO: should approve settlement token before calling liquidation
 
         IVault(_vault).liquidateCollateralExactOuput(data.trader, data.baseToken, exactOut);
 
