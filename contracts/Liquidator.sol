@@ -66,7 +66,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
             ISwapRouter(_swapRouter).exactInput(params);
         } else {
             // L_LTMSTP: less than minSettlementTokenProfit
-            require(exactIn > data.minSettlementAmount, "L_LTMSTP");
+            require(exactIn >= data.minSettlementAmount, "L_LTMSTP");
         }
 
         // should check if there is no data.path.length amountOutMinimum: data.minSettlementAmount
@@ -77,7 +77,8 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         address token = amount0Delta > 0 ? IUniswapV3Pool(data.pool).token0() : IUniswapV3Pool(data.pool).token1();
 
         // L_TF: Transfer failed
-        bool success = IERC20(token).transfer(data.pool, exactOut); // TODO: should be safeTransfer
+        // TODO: should be safeTransfer, not sure why linter shows error.
+        bool success = IERC20(token).transfer(data.pool, exactOut);
         require(success, "L_TF");
     }
 
