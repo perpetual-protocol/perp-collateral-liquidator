@@ -22,6 +22,28 @@ describe("Liquidator", () => {
         liquidator = _fixture.liquidator
     })
 
+    describe("getMaxProfitableCollateral", () => {
+        it("get the correct collateral out of none", async () => {})
+
+        it("get the correct collateral out of one", async () => {})
+
+        it("get the correct collateral out of many", async () => {})
+    })
+
+    describe("flashLiquidate", () => {
+        it("profit on single-hop swap", async () => {})
+
+        it("profit on multi-hop swap", async () => {})
+
+        it("force trade on non-profitable single-hop swap", async () => {})
+
+        it("force trade on non-profitable multi-hop swap", async () => {})
+
+        it("force error, abort on non-profitable single-hop swap", async () => {})
+
+        it("force error, abort on non-profitable multi-hop swap", async () => {})
+    })
+
     describe("withdraw", () => {
         it("transfer specified token to owner", async () => {
             const balanceBefore = await usdc.balanceOf(admin.address)

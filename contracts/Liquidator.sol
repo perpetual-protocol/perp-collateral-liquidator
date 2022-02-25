@@ -61,24 +61,26 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         // positive: liquidator give pool the collateral
         // negative: liquidator receive from pool (pathTail[0], or USDC)
         // liquidator to liquidate the exact amount of collateral token he's expected to send back to the pool
-        (uint256 exactOut, uint256 exactIn) =
+        (uint256 collateralAmount, uint256 firstHopOutAmount) =
             amount0Delta > amount1Delta
                 ? (uint256(amount0Delta), uint256(-amount1Delta))
                 : (uint256(amount1Delta), uint256(-amount0Delta));
 
         if (data.path.length > 0) {
+            // multi-hop, perform the rest hops
             ISwapRouter.ExactInputParams memory params =
                 ISwapRouter.ExactInputParams({
                     path: data.path, // abi.encodePacked(ETH, poolFee, USDC),
                     recipient: msg.sender,
                     deadline: block.timestamp,
-                    amountIn: exactIn,
+                    amountIn: firstHopOutAmount,
                     amountOutMinimum: data.minSettlementAmount
                 });
             ISwapRouter(_swapRouter).exactInput(params);
         } else {
+            // single-hop, firstHopOutAmount = settlement token received from swap
             // L_LTMSTP: less than minSettlementTokenProfit
-            require(exactIn >= data.minSettlementAmount, "L_LTMSTP");
+            require(firstHopOutAmount >= data.minSettlementAmount, "L_LTMSTP");
         }
 
         // IVault(_vault).liquidateCollateralExactOuput(data.trader, data.baseToken, exactOut);
@@ -86,13 +88,13 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         // transfer amount
         address token = amount0Delta > 0 ? IUniswapV3Pool(data.pool).token0() : IUniswapV3Pool(data.pool).token1();
 
-        IERC20(token).safeTransfer(data.pool, exactOut);
+        IERC20(token).safeTransfer(data.pool, collateralAmount);
     }
 
     function flashLiquidate(
         address trader,
         uint256 maxSettlementTokenSpent,
-        uint256 minSettlementTokenProfit,
+        int256 minSettlementTokenProfit, // negative = allow liquidation at a loss
         bytes memory pathHead, // [crv, fee, eth]
         bytes memory pathTail // [eth, fee, usdc]
     ) external {
@@ -103,6 +105,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         // }
         // bool zeroForOne = pathHead[0] < pathTail[0];
         // address pool = _getPool(pathHead[0], pathTail[0], pathHead[1]);
+        // int256 minSettlementAmount = settlement.toInt256().add(minSettlementTokenProfit);
         // (int256 amount0, int256 amount1) =
         //     IUniswapV3Pool(pool).swap(
         //         address(this),
@@ -115,7 +118,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         //                 trader: trader,
         //                 baseToken: pathHead[0],
         //                 pool: pool,
-        //                 minSettlementAmount: settlement.add(minSettlementTokenProfit)
+        //                 minSettlementAmount: minSettlementAmount < 0? 0 : minSettlementAmount.toUint256()
         //             })
         //         )
         //     );
