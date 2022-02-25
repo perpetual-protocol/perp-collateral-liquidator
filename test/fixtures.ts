@@ -19,6 +19,8 @@ import { SwapRouter as UniswapRouter } from "../typechain/uniswap-v3-periphery"
 import { token0Fixture, tokensFixture } from "./shared/fixtures"
 
 export interface Fixture {
+    WETH: WETH9
+    WBTC: TestERC20
     liquidator: Liquidator
     uniV3Factory: UniswapV3Factory
     uniV3Router: UniswapRouter
@@ -44,25 +46,32 @@ export interface Fixture {
 export function createFixture(): () => Promise<Fixture> {
     return async (): Promise<Fixture> => {
         // ======================================
+        // deploy common
+        //
+        const weth9Factory = await ethers.getContractFactory("WETH9")
+        const WETH = (await weth9Factory.deploy()) as WETH9
+
+        const tokenFactory = await ethers.getContractFactory("TestERC20")
+
+        const USDC = (await tokenFactory.deploy()) as TestERC20
+        await USDC.__TestERC20_init("TestUSDC", "USDC", 6)
+
+        const WBTC = (await tokenFactory.deploy()) as TestERC20
+        await WBTC.__TestERC20_init("TestWBTC", "WBTC", 8)
+
+        // ======================================
         // deploy UniV3 ecosystem
         //
         const factoryFactory = await ethers.getContractFactory("UniswapV3Factory")
         const uniV3Factory = (await factoryFactory.deploy()) as UniswapV3Factory
-        const weth9Factory = await ethers.getContractFactory("WETH9")
-        const weth9 = (await weth9Factory.deploy()) as WETH9
         const uniV3Router = (await (
             await ethers.getContractFactory("SwapRouter")
-        ).deploy(uniV3Factory.address, weth9.address)) as UniswapRouter
+        ).deploy(uniV3Factory.address, WETH.address)) as UniswapRouter
 
         // ======================================
         // deploy perp v2 ecosystem
         //
         const uniFeeTier = 10000 // 1%
-
-        // deploy test tokens
-        const tokenFactory = await ethers.getContractFactory("TestERC20")
-        const USDC = (await tokenFactory.deploy()) as TestERC20
-        await USDC.__TestERC20_init("TestUSDC", "USDC", 6)
 
         let baseToken: BaseToken, quoteToken: QuoteToken, mockedBaseAggregator: MockContract
         const { token0, mockedAggregator0, token1 } = await tokensFixture()
@@ -172,6 +181,9 @@ export function createFixture(): () => Promise<Fixture> {
         await liquidator.initialize(vault.address, uniV3Router.address)
 
         return {
+            WETH,
+            WBTC,
+            USDC,
             liquidator,
             uniV3Factory,
             uniV3Router,
@@ -185,7 +197,6 @@ export function createFixture(): () => Promise<Fixture> {
             insuranceFund,
             pool,
             uniFeeTier,
-            USDC,
             quoteToken,
             baseToken,
             mockedBaseAggregator,
