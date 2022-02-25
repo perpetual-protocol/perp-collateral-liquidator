@@ -97,7 +97,10 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         bytes memory pathTail // [eth, fee, usdc]
     ) external {
         // (uint256 settlement, uint256 collateral) =
-        //     IVault(_vault).getLiquidationAmountOut(trader, pathHead[0], maxSettlementTokenSpent);
+        //     IVault(_vault).getMaxLiquidationAmounts(trader, pathHead[0]);
+        // if (settlement > maxSettlementTokenSpent) {
+        //     collateral = IVault(_vault).getLiquidationAmountOut(pathHead[0], maxSettlementTokenSpent);
+        // }
         // bool zeroForOne = pathHead[0] < pathTail[0];
         // address pool = _getPool(pathHead[0], pathTail[0], pathHead[1]);
         // (int256 amount0, int256 amount1) =
@@ -124,7 +127,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         // uint256 maxValue = 0;
         // targetCollateral = address(0x0);
         // for (uint256 i = 0; i < collateralLength; i++) {
-        //     uint256 value = IVault(_vault).getMaxLiquidationValue(trader, collaterals[i]);
+        //     uint256 value = IVault(_vault).getMaxLiquidationAmounts(trader, collaterals[i]);
         //     if (value > maxValue) {
         //         maxValue = value;
         //         targetCollateral = collaterals[i];
