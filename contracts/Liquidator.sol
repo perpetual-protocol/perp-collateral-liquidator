@@ -28,6 +28,12 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         uint256 minSettlementAmount;
     }
 
+    struct Hop {
+        address tokenIn;
+        uint24 fee;
+        address tokenOut;
+    }
+
     address internal _vault;
     address internal _swapRouter;
 
@@ -95,16 +101,15 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         address trader,
         uint256 maxSettlementTokenSpent,
         int256 minSettlementTokenProfit, // negative = allow liquidation at a loss
-        bytes memory pathHead, // [crv, fee, eth]
+        Hop memory pathHead, // [crv, fee, eth]
         bytes memory pathTail // [eth, fee, usdc]
     ) external {
-        // (uint256 settlement, uint256 collateral) =
-        //     IVault(_vault).getMaxLiquidationAmounts(trader, pathHead[0]);
+        // (uint256 settlement, uint256 collateral) = IVault(_vault).getMaxLiquidationAmounts(trader, pathHead.tokenIn);
         // if (settlement > maxSettlementTokenSpent) {
-        //     collateral = IVault(_vault).getLiquidationAmountOut(pathHead[0], maxSettlementTokenSpent);
+        //     collateral = IVault(_vault).getLiquidationAmountOut(pathHead.tokenIn, maxSettlementTokenSpent);
         // }
-        // bool zeroForOne = pathHead[0] < pathTail[0];
-        // address pool = _getPool(pathHead[0], pathTail[0], pathHead[1]);
+        // bool zeroForOne = pathHead.tokenIn < pathHead.tokenOut;
+        // address pool = _getPool(pathHead.tokenIn, pathHead.tokenOut, pathHead.fee);
         // int256 minSettlementAmount = settlement.toInt256().add(minSettlementTokenProfit);
         // (int256 amount0, int256 amount1) =
         //     IUniswapV3Pool(pool).swap(
@@ -116,9 +121,9 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         //             SwapCallbackData({
         //                 path: pathTail,
         //                 trader: trader,
-        //                 baseToken: pathHead[0],
+        //                 baseToken: pathHead.tokenIn,
         //                 pool: pool,
-        //                 minSettlementAmount: minSettlementAmount < 0? 0 : minSettlementAmount.toUint256()
+        //                 minSettlementAmount: minSettlementAmount < 0 ? 0 : minSettlementAmount.toUint256()
         //             })
         //         )
         //     );

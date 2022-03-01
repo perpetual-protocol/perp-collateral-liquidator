@@ -1,4 +1,5 @@
 import { MockContract, smockit } from "@eth-optimism/smock"
+import { parseUnits } from "ethers/lib/utils"
 import { ethers } from "hardhat"
 import { BaseToken, QuoteToken, VirtualToken } from "../../typechain/perp-curie"
 import { ChainlinkPriceFeed } from "../../typechain/perp-oracle"
@@ -22,6 +23,11 @@ interface PoolFixture {
 interface BaseTokenFixture {
     baseToken: BaseToken
     mockedAggregator: MockContract
+}
+
+export interface CollateralPriceFeedFixture {
+    mockedAggregator: MockContract
+    chainlinkPriceFeed: ChainlinkPriceFeed
 }
 
 export function createQuoteTokenFixture(name: string, symbol: string): () => Promise<QuoteToken> {
@@ -53,6 +59,29 @@ export function createBaseTokenFixture(name: string, symbol: string): () => Prom
         await baseToken.initialize(name, symbol, chainlinkPriceFeed.address)
 
         return { baseToken, mockedAggregator }
+    }
+}
+
+export function createCollateralPriceFeedFixture(): (number, string) => Promise<CollateralPriceFeedFixture> {
+    return async (tokenDecimal: number, defaultPrice: string): Promise<CollateralPriceFeedFixture> => {
+        const aggregatorFactory = await ethers.getContractFactory("TestAggregatorV3")
+        const aggregator = await aggregatorFactory.deploy()
+        const mockedAggregator = await smockit(aggregator)
+
+        mockedAggregator.smocked.decimals.will.return.with(async () => {
+            return tokenDecimal
+        })
+
+        mockedAggregator.smocked.latestRoundData.will.return.with(async () => {
+            return [0, parseUnits(defaultPrice, tokenDecimal), 0, 0, 0]
+        })
+
+        const chainlinkPriceFeedFactory = await ethers.getContractFactory("ChainlinkPriceFeed")
+        const chainlinkPriceFeed = (await chainlinkPriceFeedFactory.deploy(
+            mockedAggregator.address,
+        )) as ChainlinkPriceFeed
+
+        return { chainlinkPriceFeed, mockedAggregator }
     }
 }
 

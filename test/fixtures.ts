@@ -1,6 +1,6 @@
 import { MockContract } from "@eth-optimism/smock"
 import { ethers } from "hardhat"
-import { Liquidator } from "../typechain"
+import { Liquidator, TestUniswapV3Callee } from "../typechain"
 import {
     AccountBalance,
     BaseToken,
@@ -16,14 +16,24 @@ import {
 import { TestERC20, WETH9 } from "../typechain/test"
 import { UniswapV3Factory, UniswapV3Pool } from "../typechain/uniswap-v3-core"
 import { SwapRouter as UniswapRouter } from "../typechain/uniswap-v3-periphery"
-import { token0Fixture, tokensFixture } from "./shared/fixtures"
+import {
+    CollateralPriceFeedFixture,
+    createCollateralPriceFeedFixture,
+    token0Fixture,
+    tokensFixture,
+} from "./shared/fixtures"
 
 export interface Fixture {
     WETH: WETH9
+    mockedWethAggregator: MockContract
+    poolWethUsdc: UniswapV3Pool
+    poolWbtcWeth: UniswapV3Pool
     WBTC: TestERC20
+    mockedWbtcAggregator: MockContract
     liquidator: Liquidator
     uniV3Factory: UniswapV3Factory
     uniV3Router: UniswapRouter
+    uniV3Callee: TestUniswapV3Callee
     clearingHouse: ClearingHouse
     orderBook: OrderBook
     accountBalance: AccountBalance
@@ -48,6 +58,8 @@ export function createFixture(): () => Promise<Fixture> {
         // ======================================
         // deploy common
         //
+        const uniFeeTier = 10000 // 1%
+
         const weth9Factory = await ethers.getContractFactory("WETH9")
         const WETH = (await weth9Factory.deploy()) as WETH9
 
@@ -59,6 +71,19 @@ export function createFixture(): () => Promise<Fixture> {
         const WBTC = (await tokenFactory.deploy()) as TestERC20
         await WBTC.__TestERC20_init("TestWBTC", "WBTC", 8)
 
+        const collateralPriceFeedFixture = await createCollateralPriceFeedFixture()
+        const {
+            mockedAggregator: mockedWethAggregator,
+            chainlinkPriceFeed: wethChainlinkPriceFeed,
+        }: CollateralPriceFeedFixture = await collateralPriceFeedFixture(await WETH.decimals(), "100")
+
+        const {
+            mockedAggregator: mockedWbtcAggregator,
+            chainlinkPriceFeed: wbtcChainlinkPriceFeed,
+        }: CollateralPriceFeedFixture = await collateralPriceFeedFixture(await WBTC.decimals(), "1000")
+
+        // TODO: initialize collateral manager using the ChainlinkPriceFeed contracts
+
         // ======================================
         // deploy UniV3 ecosystem
         //
@@ -68,10 +93,24 @@ export function createFixture(): () => Promise<Fixture> {
             await ethers.getContractFactory("SwapRouter")
         ).deploy(uniV3Factory.address, WETH.address)) as UniswapRouter
 
+        const uniV3CalleeFactory = await ethers.getContractFactory("TestUniswapV3Callee")
+        const uniV3Callee = (await uniV3CalleeFactory.deploy()) as TestUniswapV3Callee
+
+        const poolFactory = await ethers.getContractFactory("UniswapV3Pool")
+
+        // deploy usdc/weth pool
+        await uniV3Factory.createPool(WETH.address, USDC.address, uniFeeTier)
+        const poolWethUsdcAddr = await uniV3Factory.getPool(WETH.address, USDC.address, uniFeeTier)
+        const poolWethUsdc = poolFactory.attach(poolWethUsdcAddr) as UniswapV3Pool
+
+        // deploy wbtc/weth pool
+        await uniV3Factory.createPool(WBTC.address, WETH.address, uniFeeTier)
+        const poolWbtcWethAddr = await uniV3Factory.getPool(WBTC.address, WETH.address, uniFeeTier)
+        const poolWbtcWeth = poolFactory.attach(poolWbtcWethAddr) as UniswapV3Pool
+
         // ======================================
         // deploy perp v2 ecosystem
         //
-        const uniFeeTier = 10000 // 1%
 
         let baseToken: BaseToken, quoteToken: QuoteToken, mockedBaseAggregator: MockContract
         const { token0, mockedAggregator0, token1 } = await tokensFixture()
@@ -87,7 +126,6 @@ export function createFixture(): () => Promise<Fixture> {
 
         // prepare uniswap factory
         await uniV3Factory.createPool(baseToken.address, quoteToken.address, uniFeeTier)
-        const poolFactory = await ethers.getContractFactory("UniswapV3Pool")
 
         const marketRegistryFactory = await ethers.getContractFactory("MarketRegistry")
         const marketRegistry = (await marketRegistryFactory.deploy()) as MarketRegistry
@@ -182,11 +220,16 @@ export function createFixture(): () => Promise<Fixture> {
 
         return {
             WETH,
+            mockedWethAggregator,
+            poolWethUsdc,
             WBTC,
+            mockedWbtcAggregator,
+            poolWbtcWeth,
             USDC,
             liquidator,
             uniV3Factory,
             uniV3Router,
+            uniV3Callee,
             clearingHouse,
             orderBook,
             accountBalance,
