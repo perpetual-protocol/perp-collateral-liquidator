@@ -16,6 +16,8 @@ import { PoolAddress } from "@uniswap/v3-periphery/contracts/libraries/PoolAddre
 // import { Collateral } from "@perp/curie-contract/contracts/lib/Collateral.sol";
 import { IVault } from "@perp/curie-contract/contracts/interface/IVault.sol";
 
+import "hardhat/console.sol";
+
 contract Liquidator is IUniswapV3SwapCallback, Ownable {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;

@@ -41,7 +41,7 @@ describe("Liquidator", () => {
         })
     }
 
-    async function makeAliceNonUsdCollateralCanBeLiquidated() {
+    async function makeAliceNonUsdCollateralCanBeLiquidated(targetPrice: BigNumberish = "60") {
         // alice long 100 USDC worth of baseToken
         await clearingHouse.connect(alice).openPosition({
             baseToken: baseToken.address,
@@ -54,12 +54,14 @@ describe("Liquidator", () => {
             referralCode: ethers.constants.HashZero,
         })
 
+        const accountValue = await clearingHouse.getAccountValue(alice.address)
+        // case1: only has 1eth
         // non-settlement value threshold: 1 * 100 * 0.8 * 0.75 = 60
         // alice position size = 100 / 151.3733069 = 0.6606184541
         // desired alice loss > 60
         // (151.3733069 - v) * 0.6606184541 > 60
         // v < 151.3733069 - 60 / 0.6606184541 = 60.5493227566
-        setPoolIndexPrice("60")
+        setPoolIndexPrice(targetPrice)
     }
 
     async function addLiquidity({
@@ -217,7 +219,7 @@ describe("Liquidator", () => {
 
         describe("deposit only one non-settlement token", () => {
             beforeEach(async () => {
-                // TODO need to add eth as collateral in fixture
+                await deposit(alice, vault, 100, usdc)
                 await deposit(alice, vault, 1, weth)
             })
 
@@ -234,7 +236,7 @@ describe("Liquidator", () => {
         describe("deposit only multiple non-settlement tokens", () => {
             beforeEach(async () => {
                 await deposit(alice, vault, 1, weth)
-                await deposit(alice, vault, 1, wbtc)
+                await deposit(alice, vault, 0.05, wbtc)
             })
 
             it("get the correct collateral when no debt", async () => {
@@ -242,7 +244,13 @@ describe("Liquidator", () => {
             })
 
             it("get the correct collateral when has debt", async () => {
-                await makeAliceNonUsdCollateralCanBeLiquidated()
+                // case2: has 1eth and 0.1btc:
+                // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8)* 0.75 = 90
+                // alice position size = 100 / 151.3733069 = 0.6606184541
+                // desired alice loss > 90
+                // (151.3733069 - v) * 0.6606184541 > 90
+                // v < 151.3733069 - 90 / 0.6606184541 = 15.1373306849
+                await makeAliceNonUsdCollateralCanBeLiquidated("15")
                 expect(await liquidator.getMaxProfitableCollateral(alice.address)).to.eq(wbtc.address)
             })
         })
@@ -250,20 +258,40 @@ describe("Liquidator", () => {
 
     describe("flashLiquidate", () => {
         beforeEach(async () => {
-            await makeAliceNonUsdCollateralCanBeLiquidated()
+            await deposit(alice, vault, 100, usdc)
+            // await deposit(alice, vault, 1, weth)
+            // await deposit(alice, vault, 0.05, wbtc)
+            // case2: has 1eth and 0.1btc:
+            // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8)* 0.75 = 90
+            // alice position size = 100 / 151.3733069 = 0.6606184541
+            // desired alice loss > 90
+            // (151.3733069 - v) * 0.6606184541 > 90
+            // v < 151.3733069 - 90 / 0.6606184541 = 15.1373306849
+            await makeAliceNonUsdCollateralCanBeLiquidated("15")
         })
 
         it("profit on single-hop swap", async () => {
-            // await liquidator.flashLiquidate(
-            //     alice.address,
-            //     parseUnits("100", usdcDecimal),
-            //     parseUnits("1", usdcDecimal),
-            //     { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
-            //     "0x0"
-            // )
+            await liquidator.flashLiquidate(
+                alice.address,
+                parseUnits("100", usdcDecimal),
+                parseUnits("1", usdcDecimal),
+                { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
+                "0x0",
+            )
         })
 
-        it("profit on multi-hop swap", async () => {})
+        it("profit on multi-hop swap", async () => {
+            await liquidator.flashLiquidate(
+                alice.address,
+                parseUnits("100", usdcDecimal),
+                parseUnits("1", usdcDecimal),
+                { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                ethers.utils.solidityPack(
+                    ["address", "uint24", "address"],
+                    [weth.address, await poolWethUsdc.fee(), usdc.address],
+                ),
+            )
+        })
 
         it("force trade on non-profitable single-hop swap", async () => {})
 
