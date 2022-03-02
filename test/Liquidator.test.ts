@@ -65,8 +65,8 @@ describe("Liquidator", () => {
     async function addLiquidity({
         pool,
         receipient,
-        tickPriceUpper,
-        tickPriceLower,
+        tickPriceUpper, // note there is no safety guarded against MAX_TICK
+        tickPriceLower, // note there is no safety guarded against MIN_TICK
         token0,
         token1,
         amount0,
@@ -84,13 +84,18 @@ describe("Liquidator", () => {
         await token0.connect(receipient).approve(uniV3Callee.address, ethers.constants.MaxUint256)
         await token1.connect(receipient).approve(uniV3Callee.address, ethers.constants.MaxUint256)
 
+        const tickSpacing = await pool.tickSpacing()
         const isToken0Weth = token0.address > token1.address ? true : false
         const actualAmount0 = isToken0Weth ? amount0 : amount1
         const actualAmount1 = !isToken0Weth ? amount0 : amount1
-        const tickLower = Math.trunc(Math.log(tickPriceLower) / Math.log(1.0001)).toString()
-        const tickUpper = Math.trunc(Math.log(tickPriceUpper) / Math.log(1.0001)).toString()
-        // mint function will get reverted
-        await uniV3Callee.mint(pool.address, receipient.address, tickLower, tickUpper, actualAmount0, actualAmount1)
+        const tickLower = Math.trunc(Math.log(tickPriceLower) / Math.log(1.0001))
+        const tickUpper = Math.trunc(Math.log(tickPriceUpper) / Math.log(1.0001))
+        const tickOnSpaceLower = Math.trunc(tickLower / tickSpacing) * tickSpacing
+        const tickOnSpaceUpper = Math.trunc(tickUpper / tickSpacing) * tickSpacing
+
+        await uniV3Callee
+            .connect(receipient)
+            .mint(pool.address, receipient.address, tickOnSpaceLower, tickOnSpaceUpper, actualAmount0, actualAmount1)
     }
 
     beforeEach(async () => {
@@ -137,16 +142,17 @@ describe("Liquidator", () => {
         await usdc.mint(carol.address, parseUnits("100000", usdcDecimals))
         await poolWbtcWeth.initialize(encodePriceSqrt("1000", "1"))
         await poolWbtcWeth.increaseObservationCardinalityNext((2 ^ 16) - 1)
-        // await addLiquidity({
-        //     pool: poolWbtcWeth,
-        //     receipient: carol,
-        //     token0: weth,
-        //     token1: wbtc,
-        //     tickPriceLower: 900,
-        //     tickPriceUpper: 1100,
-        //     amount0: parseEther("100"),
-        //     amount1: parseUnits("100000", usdcDecimals),
-        // })
+
+        await addLiquidity({
+            pool: poolWbtcWeth,
+            receipient: carol,
+            token0: weth,
+            token1: wbtc,
+            tickPriceLower: 900,
+            tickPriceUpper: 1100,
+            amount0: parseEther("100"),
+            amount1: parseUnits("100000", usdcDecimals),
+        })
 
         // initialize baseToken pool
         await pool.initialize(encodePriceSqrt("151.3733069", "1"))
