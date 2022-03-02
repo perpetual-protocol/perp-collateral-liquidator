@@ -85,7 +85,7 @@ describe("Liquidator", () => {
         await token1.connect(receipient).approve(uniV3Callee.address, ethers.constants.MaxUint256)
 
         const tickSpacing = await pool.tickSpacing()
-        const isToken0Weth = token0.address > token1.address ? true : false
+        const isToken0Weth = token0.address.toLowerCase() < token1.address.toLowerCase() ? true : false
         const actualAmount0 = isToken0Weth ? amount0 : amount1
         const actualAmount1 = !isToken0Weth ? amount0 : amount1
         const tickLower = Math.trunc(Math.log(tickPriceLower) / Math.log(1.0001))
@@ -119,6 +119,7 @@ describe("Liquidator", () => {
         uniV3Callee = _fixture.uniV3Callee
 
         const usdcDecimals = await usdc.decimals()
+        const wbtcDecimals = await wbtc.decimals()
 
         // initialize usdc/weth pool
         await weth.connect(carol).deposit({ value: parseEther("1000") })
@@ -138,8 +139,8 @@ describe("Liquidator", () => {
         })
 
         // initialize wbtc/weth pool
-        await wbtc.mint(carol.address, parseUnits("100", await wbtc.decimals()))
-        await usdc.mint(carol.address, parseUnits("100000", usdcDecimals))
+        await weth.connect(carol).deposit({ value: parseEther("1000") })
+        await wbtc.mint(carol.address, parseUnits("50", wbtcDecimals))
         await poolWbtcWeth.initialize(encodePriceSqrt("1000", "1"))
         await poolWbtcWeth.increaseObservationCardinalityNext((2 ^ 16) - 1)
 
@@ -151,7 +152,7 @@ describe("Liquidator", () => {
             tickPriceLower: 900,
             tickPriceUpper: 1100,
             amount0: parseEther("100"),
-            amount1: parseUnits("100000", usdcDecimals),
+            amount1: parseUnits("50", wbtcDecimals),
         })
 
         // initialize baseToken pool
