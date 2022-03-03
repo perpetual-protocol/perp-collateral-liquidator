@@ -118,8 +118,7 @@ contract TestUniswapV3Callee is IUniswapV3MintCallback, IUniswapV3SwapCallback, 
         bytes calldata data
     ) external override {
         address sender = abi.decode(data, (address));
-        uint256 amount0 = IERC20(IUniswapV3Pool(msg.sender).token0()).balanceOf(sender);
-        uint256 amount1 = IERC20(IUniswapV3Pool(msg.sender).token1()).balanceOf(sender);
+
         emit MintCallback(amount0Owed, amount1Owed);
         if (amount0Owed > 0) IERC20(IUniswapV3Pool(msg.sender).token0()).transferFrom(sender, msg.sender, amount0Owed);
         if (amount1Owed > 0) IERC20(IUniswapV3Pool(msg.sender).token1()).transferFrom(sender, msg.sender, amount1Owed);
