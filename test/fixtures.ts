@@ -18,17 +18,23 @@ import { UniswapV3Factory, UniswapV3Pool } from "../typechain/uniswap-v3-core"
 import { SwapRouter as UniswapRouter } from "../typechain/uniswap-v3-periphery"
 import {
     CollateralPriceFeedFixture,
+    collateralTokensFixture,
     createCollateralPriceFeedFixture,
     token0Fixture,
     tokensFixture,
 } from "./shared/fixtures"
 
 export interface Fixture {
-    WETH: WETH9
+    WETH9: WETH9
+
+    // for creating pool determistically since we have control over the address ordering
+    USDC: TestERC20
+    WETH2: TestERC20
+    WBTC: TestERC20
+
     mockedWethAggregator: MockContract
     poolWethUsdc: UniswapV3Pool
     poolWbtcWeth: UniswapV3Pool
-    WBTC: TestERC20
     mockedWbtcAggregator: MockContract
     liquidator: Liquidator
     uniV3Factory: UniswapV3Factory
@@ -44,7 +50,6 @@ export interface Fixture {
     insuranceFund: InsuranceFund
     pool: UniswapV3Pool
     uniFeeTier: number
-    USDC: TestERC20
     quoteToken: QuoteToken
     baseToken: BaseToken
     mockedBaseAggregator: MockContract
@@ -61,21 +66,15 @@ export function createFixture(): () => Promise<Fixture> {
         const uniFeeTier = 10000 // 1%
 
         const weth9Factory = await ethers.getContractFactory("WETH9")
-        const WETH = (await weth9Factory.deploy()) as WETH9
+        const WETH9 = (await weth9Factory.deploy()) as WETH9
 
-        const tokenFactory = await ethers.getContractFactory("TestERC20")
-
-        const USDC = (await tokenFactory.deploy()) as TestERC20
-        await USDC.__TestERC20_init("TestUSDC", "USDC", 6)
-
-        const WBTC = (await tokenFactory.deploy()) as TestERC20
-        await WBTC.__TestERC20_init("TestWBTC", "WBTC", 8)
+        const { WETH: WETH2, WBTC, USDC } = await collateralTokensFixture()
 
         const collateralPriceFeedFixture = await createCollateralPriceFeedFixture()
         const {
             mockedAggregator: mockedWethAggregator,
             chainlinkPriceFeed: wethChainlinkPriceFeed,
-        }: CollateralPriceFeedFixture = await collateralPriceFeedFixture(await WETH.decimals(), "100")
+        }: CollateralPriceFeedFixture = await collateralPriceFeedFixture(await WETH2.decimals(), "100")
 
         const {
             mockedAggregator: mockedWbtcAggregator,
@@ -91,7 +90,7 @@ export function createFixture(): () => Promise<Fixture> {
         const uniV3Factory = (await factoryFactory.deploy()) as UniswapV3Factory
         const uniV3Router = (await (
             await ethers.getContractFactory("SwapRouter")
-        ).deploy(uniV3Factory.address, WETH.address)) as UniswapRouter
+        ).deploy(uniV3Factory.address, WETH9.address)) as UniswapRouter
 
         const uniV3CalleeFactory = await ethers.getContractFactory("TestUniswapV3Callee")
         const uniV3Callee = (await uniV3CalleeFactory.deploy()) as TestUniswapV3Callee
@@ -99,13 +98,13 @@ export function createFixture(): () => Promise<Fixture> {
         const poolFactory = await ethers.getContractFactory("UniswapV3Pool")
 
         // deploy usdc/weth pool
-        await uniV3Factory.createPool(WETH.address, USDC.address, uniFeeTier)
-        const poolWethUsdcAddr = await uniV3Factory.getPool(WETH.address, USDC.address, uniFeeTier)
+        await uniV3Factory.createPool(WETH2.address, USDC.address, uniFeeTier)
+        const poolWethUsdcAddr = await uniV3Factory.getPool(WETH2.address, USDC.address, uniFeeTier)
         const poolWethUsdc = poolFactory.attach(poolWethUsdcAddr) as UniswapV3Pool
 
         // deploy wbtc/weth pool
-        await uniV3Factory.createPool(WBTC.address, WETH.address, uniFeeTier)
-        const poolWbtcWethAddr = await uniV3Factory.getPool(WBTC.address, WETH.address, uniFeeTier)
+        await uniV3Factory.createPool(WBTC.address, WETH2.address, uniFeeTier)
+        const poolWbtcWethAddr = await uniV3Factory.getPool(WBTC.address, WETH2.address, uniFeeTier)
         const poolWbtcWeth = poolFactory.attach(poolWbtcWethAddr) as UniswapV3Pool
 
         // ======================================
@@ -219,13 +218,14 @@ export function createFixture(): () => Promise<Fixture> {
         await liquidator.initialize(vault.address, uniV3Router.address)
 
         return {
-            WETH,
+            USDC,
+            WETH9,
+            WETH2,
+            WBTC,
             mockedWethAggregator,
             poolWethUsdc,
-            WBTC,
             mockedWbtcAggregator,
             poolWbtcWeth,
-            USDC,
             liquidator,
             uniV3Factory,
             uniV3Router,

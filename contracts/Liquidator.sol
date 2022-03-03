@@ -91,7 +91,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
             require(firstHopOutAmount >= data.minSettlementAmount, "L_LTMSTP");
         }
 
-        // IVault(_vault).liquidateCollateralExactOuput(data.trader, data.baseToken, exactOut);
+        // IVault(_vault).liquidateCollateralExactOutput(data.trader, data.baseToken, exactOut);
 
         // transfer amount
         address token = amount0Delta > 0 ? IUniswapV3Pool(data.pool).token0() : IUniswapV3Pool(data.pool).token1();

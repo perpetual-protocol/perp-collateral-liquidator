@@ -5,7 +5,7 @@ import { parseEther, parseUnits } from "ethers/lib/utils"
 import { ethers, waffle } from "hardhat"
 import { Liquidator, TestUniswapV3Callee } from "../typechain"
 import { BaseToken, ClearingHouse, Exchange, MarketRegistry, Vault } from "../typechain/perp-curie"
-import { TestERC20, WETH9 } from "../typechain/test"
+import { TestERC20 } from "../typechain/test"
 import { UniswapV3Pool } from "../typechain/uniswap-v3-core"
 import { createFixture } from "./fixtures"
 import { deposit } from "./helper/token"
@@ -27,7 +27,7 @@ describe("Liquidator", () => {
     let mockedBaseAggregator: MockContract
     let liquidator: Liquidator
     let usdc: TestERC20
-    let weth: WETH9
+    let weth: TestERC20
     let poolWethUsdc: UniswapV3Pool
     let poolWbtcWeth: UniswapV3Pool
     let wbtc: TestERC20
@@ -76,7 +76,7 @@ describe("Liquidator", () => {
     }: {
         pool: UniswapV3Pool
         receipient: Wallet
-        token0: WETH9
+        token0: TestERC20
         token1: TestERC20
         tickPriceUpper: number
         tickPriceLower: number
@@ -87,9 +87,6 @@ describe("Liquidator", () => {
         await token1.connect(receipient).approve(uniV3Callee.address, ethers.constants.MaxUint256)
 
         const tickSpacing = await pool.tickSpacing()
-        const isToken0Weth = token0.address.toLowerCase() < token1.address.toLowerCase() ? true : false
-        const actualAmount0 = isToken0Weth ? amount0 : amount1
-        const actualAmount1 = !isToken0Weth ? amount0 : amount1
         const tickLower = Math.trunc(Math.log(tickPriceLower) / Math.log(1.0001))
         const tickUpper = Math.trunc(Math.log(tickPriceUpper) / Math.log(1.0001))
         const tickOnSpaceLower = Math.trunc(tickLower / tickSpacing) * tickSpacing
@@ -97,7 +94,7 @@ describe("Liquidator", () => {
 
         await uniV3Callee
             .connect(receipient)
-            .mint(pool.address, receipient.address, tickOnSpaceLower, tickOnSpaceUpper, actualAmount0, actualAmount1)
+            .mint(pool.address, receipient.address, tickOnSpaceLower, tickOnSpaceUpper, amount0, amount1)
     }
 
     beforeEach(async () => {
@@ -106,7 +103,7 @@ describe("Liquidator", () => {
 
         usdc = _fixture.USDC
         usdcDecimal = await usdc.decimals()
-        weth = _fixture.WETH
+        weth = _fixture.WETH2
         wbtc = _fixture.WBTC
         poolWethUsdc = _fixture.poolWethUsdc
         poolWbtcWeth = _fixture.poolWbtcWeth
@@ -124,7 +121,7 @@ describe("Liquidator", () => {
         const wbtcDecimals = await wbtc.decimals()
 
         // initialize usdc/weth pool
-        await weth.connect(carol).deposit({ value: parseEther("1000") })
+        await weth.mint(carol.address, parseEther("1000"))
         await usdc.mint(carol.address, parseUnits("100000", usdcDecimals))
         await poolWethUsdc.initialize(encodePriceSqrt("100", "1"))
         await poolWethUsdc.increaseObservationCardinalityNext((2 ^ 16) - 1)
@@ -141,20 +138,20 @@ describe("Liquidator", () => {
         })
 
         // initialize wbtc/weth pool
-        await weth.connect(carol).deposit({ value: parseEther("1000") })
-        await wbtc.mint(carol.address, parseUnits("50", wbtcDecimals))
-        await poolWbtcWeth.initialize(encodePriceSqrt("1000", "1"))
+        await weth.mint(carol.address, parseEther("1000"))
+        await wbtc.mint(carol.address, parseUnits("100", wbtcDecimals))
+        await poolWbtcWeth.initialize(encodePriceSqrt("100", "1000")) // token1: ETH, token0: BTC
         await poolWbtcWeth.increaseObservationCardinalityNext((2 ^ 16) - 1)
 
         await addLiquidity({
             pool: poolWbtcWeth,
             receipient: carol,
-            token0: weth,
-            token1: wbtc,
-            tickPriceLower: 900,
-            tickPriceUpper: 1100,
-            amount0: parseEther("100"),
-            amount1: parseUnits("50", wbtcDecimals),
+            token0: wbtc,
+            token1: weth,
+            tickPriceLower: 1 / 15,
+            tickPriceUpper: 1 / 5,
+            amount0: parseUnits("100", wbtcDecimals),
+            amount1: parseEther("1000"),
         })
 
         // initialize baseToken pool
@@ -172,7 +169,7 @@ describe("Liquidator", () => {
         const usdcHundred = parseUnits("100", usdcDecimals)
 
         // mint
-        await weth.connect(alice).deposit({ value: parseEther("10") })
+        await weth.mint(carol.address, parseEther("10"))
         await usdc.mint(alice.address, usdcHundred) // test subject
         await usdc.mint(bob.address, usdcMillion) // helper
         await usdc.mint(carol.address, usdcMillion) // maker
@@ -260,53 +257,135 @@ describe("Liquidator", () => {
         beforeEach(async () => {
             await deposit(alice, vault, 1, weth)
             await deposit(alice, vault, 0.05, wbtc)
+            // prepare to manipulate the spot price
+            await weth.mint(carol.address, parseEther("1000"))
         })
 
         describe("trader collateral is liquidatable", () => {
             beforeEach(async () => {
-                // case2: has 1eth and 0.1btc:
+                // case2: has 1eth and 0.05btc:
                 // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8)* 0.75 = 90
                 // alice position size = 100 / 151.3733069 = 0.6606184541
                 // desired alice loss > 90
                 // (151.3733069 - v) * 0.6606184541 > 90
                 // v < 151.3733069 - 90 / 0.6606184541 = 15.1373306849
+
+                // alice can be liqudiated at most 45 usd worth of non-usd collateral
+                // maxSettlementTokenIn = 45 / (1 - 0.1) = 50
+                // for ETH:
+                //   maxCollateralTokenOut = 50 / 100 / (1 - 0.05) = 0.5263157895
+                //   minProfitableSpotPrice = 50 / 0.5263157895 = 94.9999999953
+                //
+                // similarly, for BTC->ETH->USDC swap:
+                //   maxCollateralTokenOut = 50 / 1000 / (1 - 0.05) = 0.05263157895
+                //   0.05263157895 BTC -> 0.5263157895 ETH -> 49.473684213 USDC (unprofitable)
                 await makeAliceNonUsdCollateralLiquidatable("15")
             })
 
             it("profit on single-hop swap", async () => {
                 await liquidator.flashLiquidate(
-                  alice.address,
-                  parseUnits("100", usdcDecimal),
-                  parseUnits("1", usdcDecimal),
-                  { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
-                  "0x0",
+                    alice.address,
+                    parseUnits("100", usdcDecimal),
+                    parseUnits("1", usdcDecimal),
+                    { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
+                    "0x0",
                 )
             })
 
             it("profit on multi-hop swap", async () => {
                 await liquidator.flashLiquidate(
-                  alice.address,
-                  parseUnits("100", usdcDecimal),
-                  parseUnits("1", usdcDecimal),
-                  { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
-                  ethers.utils.solidityPack(
-                    ["address", "uint24", "address"],
-                    [weth.address, await poolWethUsdc.fee(), usdc.address],
-                  ),
+                    alice.address,
+                    parseUnits("100", usdcDecimal),
+                    parseUnits("1", usdcDecimal),
+                    { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                    ethers.utils.solidityPack(
+                        ["address", "uint24", "address"],
+                        [weth.address, await poolWethUsdc.fee(), usdc.address],
+                    ),
                 )
             })
 
-            it("force trade on non-profitable single-hop swap", async () => {})
+            describe("non-profitable swap", () => {
+                beforeEach(async () => {
+                    // manipulate ETH-USDC spot price so the trade is no longer profitable
+                    await uniV3Callee
+                        .connect(carol)
+                        .swapToLowerSqrtPrice(poolWethUsdc.address, encodePriceSqrt("94", "1"), carol.address)
+                })
 
-            it("force trade on non-profitable multi-hop swap", async () => {})
+                it("force trade on non-profitable single-hop swap", async () => {
+                    await liquidator.flashLiquidate(
+                        alice.address,
+                        parseUnits("100", usdcDecimal),
+                        parseUnits("-100", usdcDecimal), // small enough so we force the losing trade
+                        { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                        ethers.utils.solidityPack(
+                            ["address", "uint24", "address"],
+                            [weth.address, await poolWethUsdc.fee(), usdc.address],
+                        ),
+                    )
+                })
 
-            it("force error, abort on non-profitable single-hop swap", async () => {})
+                it("force trade on non-profitable multi-hop swap", async () => {
+                    await liquidator.flashLiquidate(
+                        alice.address,
+                        parseUnits("100", usdcDecimal),
+                        parseUnits("-100", usdcDecimal), // small enough so we force the losing trade
+                        { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                        ethers.utils.solidityPack(
+                            ["address", "uint24", "address"],
+                            [weth.address, await poolWethUsdc.fee(), usdc.address],
+                        ),
+                    )
+                })
 
-            it("force error, abort on non-profitable multi-hop swap", async () => {})
+                it("force error, abort on non-profitable single-hop swap", async () => {
+                    await expect(
+                        liquidator.flashLiquidate(
+                            alice.address,
+                            parseUnits("100", usdcDecimal),
+                            parseUnits("0", usdcDecimal),
+                            { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                            ethers.utils.solidityPack(
+                                ["address", "uint24", "address"],
+                                [weth.address, await poolWethUsdc.fee(), usdc.address],
+                            ),
+                        ),
+                    ).to.be.revertedWith("L_LTMSTP")
+                })
+
+                it("force error, abort on non-profitable multi-hop swap", async () => {
+                    await expect(
+                        liquidator.flashLiquidate(
+                            alice.address,
+                            parseUnits("100", usdcDecimal),
+                            parseUnits("0", usdcDecimal),
+                            { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                            ethers.utils.solidityPack(
+                                ["address", "uint24", "address"],
+                                [weth.address, await poolWethUsdc.fee(), usdc.address],
+                            ),
+                        ),
+                    ).to.be.revertedWith("L_LTMSTP")
+                })
+            })
         })
 
         describe("trader collateral is not liquidatable", () => {
-            it("force error, not liquidatable", async () => {})
+            it("force error, not liquidatable", async () => {
+                await expect(
+                    liquidator.flashLiquidate(
+                        alice.address,
+                        parseUnits("100", usdcDecimal),
+                        parseUnits("0", usdcDecimal),
+                        { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                        ethers.utils.solidityPack(
+                            ["address", "uint24", "address"],
+                            [weth.address, await poolWethUsdc.fee(), usdc.address],
+                        ),
+                    ),
+                ).to.be.revertedWith("V_NL")
+            })
         })
     })
 
