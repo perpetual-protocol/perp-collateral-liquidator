@@ -1,15 +1,15 @@
 import { MockContract } from "@eth-optimism/smock"
 import { expect } from "chai"
 import { BigNumber, BigNumberish, Wallet } from "ethers"
-import { parseEther, parseUnits } from "ethers/lib/utils"
+import { formatEther, formatUnits, parseEther, parseUnits } from "ethers/lib/utils"
 import { ethers, waffle } from "hardhat"
 import { Liquidator, TestUniswapV3Callee } from "../typechain"
-import { BaseToken, ClearingHouse, Exchange, MarketRegistry, Vault } from "../typechain/perp-curie"
+import { AccountBalance, BaseToken, ClearingHouse, Exchange, MarketRegistry, Vault } from "../typechain/perp-curie"
 import { TestERC20 } from "../typechain/test"
 import { UniswapV3Pool } from "../typechain/uniswap-v3-core"
-import { createFixture } from "./fixtures"
-import { deposit } from "./helper/token"
-import { encodePriceSqrt, syncIndexToMarketPrice } from "./shared/utilities"
+import { createFixture, Fixture } from "./fixtures"
+import { deposit, mintAndDeposit } from "./helper/token"
+import { encodePriceSqrt, formatSqrtPriceX96ToPrice, syncIndexToMarketPrice } from "./shared/utilities"
 
 describe("Liquidator", () => {
     const [admin, alice, bob, carol, davis] = waffle.provider.getWallets()
@@ -18,9 +18,11 @@ describe("Liquidator", () => {
 
     const nullAddress = "0x0000000000000000000000000000000000000000"
 
+    let fixture: Fixture
     let vault: Vault
     let clearingHouse: ClearingHouse
     let exchange: Exchange
+    let accountBalance: AccountBalance
     let pool: UniswapV3Pool
     let marketRegistry: MarketRegistry
     let baseToken: BaseToken
@@ -28,10 +30,12 @@ describe("Liquidator", () => {
     let liquidator: Liquidator
     let usdc: TestERC20
     let weth: TestERC20
+    let wbtc: TestERC20
+    let usdcDecimals: number
+    let wethDecimals: number
+    let wbtcDecimals: number
     let poolWethUsdc: UniswapV3Pool
     let poolWbtcWeth: UniswapV3Pool
-    let wbtc: TestERC20
-    let usdcDecimal: number
     let uniV3Callee: TestUniswapV3Callee
 
     function setPoolIndexPrice(price: BigNumberish) {
@@ -54,7 +58,21 @@ describe("Liquidator", () => {
             referralCode: ethers.constants.HashZero,
         })
 
-        const accountValue = await clearingHouse.getAccountValue(alice.address)
+        // TODO test
+        console.log(
+            `alice position size: ${formatEther(
+                await accountBalance.getTakerPositionSize(alice.address, baseToken.address),
+            )}`,
+        )
+
+        console.log(`alice is liquidatable (before): ${await vault.isLiquidatable(alice.address)}`)
+        console.log(`alice accountValue (before): ${formatEther(await clearingHouse.getAccountValue(alice.address))}`)
+        console.log(
+            `alice settlementTokenValue (before): ${formatUnits(
+                await vault.getSettlementTokenValue(alice.address),
+                usdcDecimals,
+            )}`,
+        )
         // case1: only has 1eth
         // non-settlement value threshold: 1 * 100 * 0.8 * 0.75 = 60
         // alice position size = 100 / 151.3733069 = 0.6606184541
@@ -62,6 +80,15 @@ describe("Liquidator", () => {
         // (151.3733069 - v) * 0.6606184541 > 60
         // v < 151.3733069 - 60 / 0.6606184541 = 60.5493227566
         setPoolIndexPrice(targetPrice)
+
+        console.log(`alice is liquidatable (after): ${await vault.isLiquidatable(alice.address)}`)
+        console.log(`alice accountValue (after): ${formatEther(await clearingHouse.getAccountValue(alice.address))}`)
+        console.log(
+            `alice settlementTokenValue (after): ${formatUnits(
+                await vault.getSettlementTokenValue(alice.address),
+                usdcDecimals,
+            )}`,
+        )
     }
 
     async function addLiquidity({
@@ -91,6 +118,7 @@ describe("Liquidator", () => {
         const tickUpper = Math.trunc(Math.log(tickPriceUpper) / Math.log(1.0001))
         const tickOnSpaceLower = Math.trunc(tickLower / tickSpacing) * tickSpacing
         const tickOnSpaceUpper = Math.trunc(tickUpper / tickSpacing) * tickSpacing
+        console.log(`tickOnSpaceLower: ${tickOnSpaceLower}, tickOnSpaceUpper: ${tickOnSpaceUpper}`)
 
         await uniV3Callee
             .connect(receipient)
@@ -98,49 +126,64 @@ describe("Liquidator", () => {
     }
 
     beforeEach(async () => {
-        // TODO setup Vault to be multi-collateral
-        const _fixture = await loadFixture(createFixture())
+        fixture = await loadFixture(createFixture())
 
-        usdc = _fixture.USDC
-        usdcDecimal = await usdc.decimals()
-        weth = _fixture.WETH2
-        wbtc = _fixture.WBTC
-        poolWethUsdc = _fixture.poolWethUsdc
-        poolWbtcWeth = _fixture.poolWbtcWeth
-        vault = _fixture.vault
-        clearingHouse = _fixture.clearingHouse
-        exchange = _fixture.exchange
-        baseToken = _fixture.baseToken
-        mockedBaseAggregator = _fixture.mockedBaseAggregator
-        marketRegistry = _fixture.marketRegistry
-        pool = _fixture.pool
-        liquidator = _fixture.liquidator
-        uniV3Callee = _fixture.uniV3Callee
-
-        const usdcDecimals = await usdc.decimals()
-        const wbtcDecimals = await wbtc.decimals()
+        usdc = fixture.USDC
+        weth = fixture.WETH2
+        wbtc = fixture.WBTC
+        usdcDecimals = await usdc.decimals()
+        wethDecimals = await weth.decimals()
+        wbtcDecimals = await wbtc.decimals()
+        poolWethUsdc = fixture.poolWethUsdc
+        poolWbtcWeth = fixture.poolWbtcWeth
+        vault = fixture.vault
+        clearingHouse = fixture.clearingHouse
+        exchange = fixture.exchange
+        accountBalance = fixture.accountBalance
+        baseToken = fixture.baseToken
+        mockedBaseAggregator = fixture.mockedBaseAggregator
+        marketRegistry = fixture.marketRegistry
+        pool = fixture.pool
+        liquidator = fixture.liquidator
+        uniV3Callee = fixture.uniV3Callee
 
         // initialize usdc/weth pool
         await weth.mint(carol.address, parseEther("1000"))
         await usdc.mint(carol.address, parseUnits("100000", usdcDecimals))
-        await poolWethUsdc.initialize(encodePriceSqrt("100", "1"))
+        await poolWethUsdc.initialize(encodePriceSqrt(parseUnits("100", usdcDecimals), parseEther("1"))) // token1: USDC, token0: WETH
         await poolWethUsdc.increaseObservationCardinalityNext((2 ^ 16) - 1)
+
+        // TODO test
+        console.log(`usdcDecimals: ${usdcDecimals}`)
+        console.log(`wethDecimals: ${wethDecimals}`)
+        console.log(`wbtcDecimals: ${wbtcDecimals}`)
 
         await addLiquidity({
             pool: poolWethUsdc,
             receipient: carol,
             token0: weth,
             token1: usdc,
-            tickPriceLower: 50,
-            tickPriceUpper: 150,
+            tickPriceLower: (50 * 10 ** usdcDecimals) / (1 * 10 ** wethDecimals), // 50 USDC / 1 ETH
+            tickPriceUpper: (150 * 10 ** usdcDecimals) / (1 * 10 ** wethDecimals), // 150 USDC / 1 ETH
             amount0: parseEther("1000"),
             amount1: parseUnits("100000", usdcDecimals),
         })
 
+        // TODO test
+        console.log(`pool ETH balance (before): ${formatEther(await weth.balanceOf(poolWethUsdc.address))}`)
+        console.log(
+            `pool USDC balance (before): ${formatUnits(await usdc.balanceOf(poolWethUsdc.address), usdcDecimals)}`,
+        )
+        console.log(
+            `ETH-USDC pool spot price (before): ${formatSqrtPriceX96ToPrice(
+                (await poolWethUsdc.slot0()).sqrtPriceX96,
+            )}`,
+        )
+
         // initialize wbtc/weth pool
         await weth.mint(carol.address, parseEther("1000"))
         await wbtc.mint(carol.address, parseUnits("100", wbtcDecimals))
-        await poolWbtcWeth.initialize(encodePriceSqrt("100", "1000")) // token1: ETH, token0: BTC
+        await poolWbtcWeth.initialize(encodePriceSqrt(parseEther("1000"), parseUnits("100", wbtcDecimals))) // token1: WETH, token0: WBTC
         await poolWbtcWeth.increaseObservationCardinalityNext((2 ^ 16) - 1)
 
         await addLiquidity({
@@ -148,11 +191,22 @@ describe("Liquidator", () => {
             receipient: carol,
             token0: wbtc,
             token1: weth,
-            tickPriceLower: 1 / 15,
-            tickPriceUpper: 1 / 5,
+            tickPriceLower: (5 * 10 ** wethDecimals) / (1 * 10 ** wbtcDecimals),
+            tickPriceUpper: (15 * 10 ** wethDecimals) / (1 * 10 ** wbtcDecimals),
             amount0: parseUnits("100", wbtcDecimals),
             amount1: parseEther("1000"),
         })
+
+        // TODO test
+        console.log(`pool ETH balance (before): ${formatEther(await weth.balanceOf(poolWbtcWeth.address))}`)
+        console.log(
+            `pool WBTC balance (before): ${formatUnits(await wbtc.balanceOf(poolWbtcWeth.address), wbtcDecimals)}`,
+        )
+        console.log(
+            `WBTC-WETH pool spot price (before): ${formatSqrtPriceX96ToPrice(
+                (await poolWbtcWeth.slot0()).sqrtPriceX96,
+            )}`,
+        )
 
         // initialize baseToken pool
         await pool.initialize(encodePriceSqrt("151.3733069", "1"))
@@ -216,7 +270,7 @@ describe("Liquidator", () => {
 
         describe("deposit only one non-settlement token", () => {
             beforeEach(async () => {
-                await deposit(alice, vault, 1, weth)
+                await mintAndDeposit(fixture, alice, 1, weth)
             })
 
             it("get the correct collateral when no debt", async () => {
@@ -231,8 +285,8 @@ describe("Liquidator", () => {
 
         describe("deposit only multiple non-settlement tokens", () => {
             beforeEach(async () => {
-                await deposit(alice, vault, 1, weth)
-                await deposit(alice, vault, 0.05, wbtc)
+                await mintAndDeposit(fixture, alice, 1, weth)
+                await mintAndDeposit(fixture, alice, 0.05, wbtc)
             })
 
             it("get the correct collateral when no debt", async () => {
@@ -240,22 +294,23 @@ describe("Liquidator", () => {
             })
 
             it("get the correct collateral when has debt", async () => {
-                // case2: has 1eth and 0.1btc:
+                // case2: has 1eth and 0.05btc:
                 // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8)* 0.75 = 90
                 // alice position size = 100 / 151.3733069 = 0.6606184541
                 // desired alice loss > 90
                 // (151.3733069 - v) * 0.6606184541 > 90
                 // v < 151.3733069 - 90 / 0.6606184541 = 15.1373306849
                 await makeAliceNonUsdCollateralLiquidatable("15")
-                expect(await liquidator.getMaxProfitableCollateral(alice.address)).to.eq(wbtc.address)
+                expect(await liquidator.getMaxProfitableCollateral(alice.address)).to.eq(weth.address)
             })
         })
     })
 
     describe("flashLiquidate", () => {
         beforeEach(async () => {
-            await deposit(alice, vault, 1, weth)
-            await deposit(alice, vault, 0.05, wbtc)
+            await mintAndDeposit(fixture, alice, 1, weth)
+            await mintAndDeposit(fixture, alice, 0.05, wbtc)
+
             // prepare to manipulate the spot price
             await weth.mint(carol.address, parseEther("1000"))
         })
@@ -281,21 +336,38 @@ describe("Liquidator", () => {
                 await makeAliceNonUsdCollateralLiquidatable("15")
             })
 
-            it("profit on single-hop swap", async () => {
+            it.only("profit on single-hop swap", async () => {
+                console.log(
+                    `liquidator USDC balance (before): ${formatUnits(
+                        await usdc.balanceOf(liquidator.address),
+                        usdcDecimals,
+                    )}`,
+                )
                 await liquidator.flashLiquidate(
                     alice.address,
-                    parseUnits("100", usdcDecimal),
-                    parseUnits("1", usdcDecimal),
+                    parseUnits("100", usdcDecimals),
+                    parseUnits("1", usdcDecimals),
                     { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
-                    "0x0",
+                    "0x",
                 )
+                console.log(
+                    `ETH-USDC pool spot price: ${formatSqrtPriceX96ToPrice((await poolWethUsdc.slot0()).sqrtPriceX96)}`,
+                )
+                console.log(`pool ETH balance: ${formatEther(await weth.balanceOf(poolWethUsdc.address))}`)
+                console.log(
+                    `pool USDC balance: ${formatUnits(await usdc.balanceOf(poolWethUsdc.address), usdcDecimals)}`,
+                )
+
+                const usdcBalance = await usdc.balanceOf(liquidator.address)
+                console.log(`liquidator USDC balance: ${formatUnits(usdcBalance, usdcDecimals)}`)
+                expect(usdcBalance).to.be.gt(0)
             })
 
             it("profit on multi-hop swap", async () => {
                 await liquidator.flashLiquidate(
                     alice.address,
-                    parseUnits("100", usdcDecimal),
-                    parseUnits("1", usdcDecimal),
+                    parseUnits("100", usdcDecimals),
+                    parseUnits("1", usdcDecimals),
                     { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
                     ethers.utils.solidityPack(
                         ["address", "uint24", "address"],
@@ -315,8 +387,8 @@ describe("Liquidator", () => {
                 it("force trade on non-profitable single-hop swap", async () => {
                     await liquidator.flashLiquidate(
                         alice.address,
-                        parseUnits("100", usdcDecimal),
-                        parseUnits("-100", usdcDecimal), // small enough so we force the losing trade
+                        parseUnits("100", usdcDecimals),
+                        parseUnits("-100", usdcDecimals), // small enough so we force the losing trade
                         { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
                         ethers.utils.solidityPack(
                             ["address", "uint24", "address"],
@@ -328,8 +400,8 @@ describe("Liquidator", () => {
                 it("force trade on non-profitable multi-hop swap", async () => {
                     await liquidator.flashLiquidate(
                         alice.address,
-                        parseUnits("100", usdcDecimal),
-                        parseUnits("-100", usdcDecimal), // small enough so we force the losing trade
+                        parseUnits("100", usdcDecimals),
+                        parseUnits("-100", usdcDecimals), // small enough so we force the losing trade
                         { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
                         ethers.utils.solidityPack(
                             ["address", "uint24", "address"],
@@ -342,8 +414,8 @@ describe("Liquidator", () => {
                     await expect(
                         liquidator.flashLiquidate(
                             alice.address,
-                            parseUnits("100", usdcDecimal),
-                            parseUnits("0", usdcDecimal),
+                            parseUnits("100", usdcDecimals),
+                            parseUnits("0", usdcDecimals),
                             { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
                             ethers.utils.solidityPack(
                                 ["address", "uint24", "address"],
@@ -357,8 +429,8 @@ describe("Liquidator", () => {
                     await expect(
                         liquidator.flashLiquidate(
                             alice.address,
-                            parseUnits("100", usdcDecimal),
-                            parseUnits("0", usdcDecimal),
+                            parseUnits("100", usdcDecimals),
+                            parseUnits("0", usdcDecimals),
                             { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
                             ethers.utils.solidityPack(
                                 ["address", "uint24", "address"],
@@ -375,8 +447,8 @@ describe("Liquidator", () => {
                 await expect(
                     liquidator.flashLiquidate(
                         alice.address,
-                        parseUnits("100", usdcDecimal),
-                        parseUnits("0", usdcDecimal),
+                        parseUnits("100", usdcDecimals),
+                        parseUnits("0", usdcDecimals),
                         { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
                         ethers.utils.solidityPack(
                             ["address", "uint24", "address"],
@@ -391,11 +463,11 @@ describe("Liquidator", () => {
     describe("withdraw", () => {
         it("transfer specified token to owner", async () => {
             const balanceBefore = await usdc.balanceOf(admin.address)
-            usdc.mint(liquidator.address, parseUnits("100", usdcDecimal))
+            usdc.mint(liquidator.address, parseUnits("100", usdcDecimals))
             await liquidator.withdraw(usdc.address)
             const balanceAfter = await usdc.balanceOf(admin.address)
 
-            expect(balanceAfter.sub(balanceBefore)).to.eq(parseUnits("100", usdcDecimal))
+            expect(balanceAfter.sub(balanceBefore)).to.eq(parseUnits("100", usdcDecimals))
         })
 
         it("forced error, called by non-owner", async () => {

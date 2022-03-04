@@ -100,6 +100,9 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
 
         // transfer the collateral to uniswap pool
         IERC20(collateralToken).safeTransfer(data.pool, collateralAmount);
+
+        console.log("collateralAmount:", collateralAmount);
+        console.log("firstHopOutAmount:", firstHopOutAmount);
     }
 
     function flashLiquidate(
@@ -110,21 +113,24 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         bytes memory pathTail // [eth, fee, usdc]
     ) external {
         (uint256 settlement, uint256 collateral) = IVault(_vault).getMaxLiquidationAmounts(trader, pathHead.tokenIn);
+        console.log("max settlement:", settlement);
+        console.log("max collateral:", collateral);
         if (settlement > maxSettlementTokenSpent) {
             collateral = IVault(_vault).getLiquidationAmountOut(pathHead.tokenIn, maxSettlementTokenSpent);
         }
         bool zeroForOne = pathHead.tokenIn < pathHead.tokenOut;
         address pool = _getPool(pathHead.tokenIn, pathHead.tokenOut, pathHead.fee);
         int256 minSettlementAmount = settlement.toInt256().add(minSettlementTokenProfit);
-        bytes memory data = abi.encode(
-            SwapCallbackData({
-                path : pathTail,
-                trader : trader,
-                baseToken : pathHead.tokenIn,
-                pool : pool,
-                minSettlementAmount : minSettlementAmount < 0 ? 0 : minSettlementAmount.toUint256()
-            })
-        );
+        bytes memory data =
+            abi.encode(
+                SwapCallbackData({
+                    path: pathTail,
+                    trader: trader,
+                    baseToken: pathHead.tokenIn,
+                    pool: pool,
+                    minSettlementAmount: minSettlementAmount < 0 ? 0 : minSettlementAmount.toUint256()
+                })
+            );
         IUniswapV3Pool(pool).swap(
             address(this),
             zeroForOne,
