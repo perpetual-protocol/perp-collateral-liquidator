@@ -1,5 +1,6 @@
-import { MockContract, smockit } from "@eth-optimism/smock"
-import { ethers, waffle } from "hardhat"
+import { MockContract } from "@eth-optimism/smock"
+import { ethers } from "hardhat"
+import { Liquidator, TestUniswapV3Callee } from "../typechain"
 import {
     AccountBalance,
     BaseToken,
@@ -12,15 +13,33 @@ import {
     QuoteToken,
     Vault,
 } from "../typechain/perp-curie"
-import { WETH9, TestERC20 } from "../typechain/test"
+import { TestERC20, WETH9 } from "../typechain/test"
 import { UniswapV3Factory, UniswapV3Pool } from "../typechain/uniswap-v3-core"
 import { SwapRouter as UniswapRouter } from "../typechain/uniswap-v3-periphery"
-import { tokensFixture, token0Fixture } from "./shared/fixtures"
+import {
+    CollateralPriceFeedFixture,
+    collateralTokensFixture,
+    createCollateralPriceFeedFixture,
+    token0Fixture,
+    tokensFixture,
+} from "./shared/fixtures"
 
 export interface Fixture {
-    // liquidator: Liquidator
+    WETH9: WETH9
+
+    // for creating pool determistically since we have control over the address ordering
+    USDC: TestERC20
+    WETH2: TestERC20
+    WBTC: TestERC20
+
+    mockedWethAggregator: MockContract
+    poolWethUsdc: UniswapV3Pool
+    poolWbtcWeth: UniswapV3Pool
+    mockedWbtcAggregator: MockContract
+    liquidator: Liquidator
     uniV3Factory: UniswapV3Factory
     uniV3Router: UniswapRouter
+    uniV3Callee: TestUniswapV3Callee
     clearingHouse: ClearingHouse
     orderBook: OrderBook
     accountBalance: AccountBalance
@@ -31,7 +50,6 @@ export interface Fixture {
     insuranceFund: InsuranceFund
     pool: UniswapV3Pool
     uniFeeTier: number
-    USDC: TestERC20
     quoteToken: QuoteToken
     baseToken: BaseToken
     mockedBaseAggregator: MockContract
@@ -43,25 +61,55 @@ export interface Fixture {
 export function createFixture(): () => Promise<Fixture> {
     return async (): Promise<Fixture> => {
         // ======================================
+        // deploy common
+        //
+        const uniFeeTier = 10000 // 1%
+
+        const weth9Factory = await ethers.getContractFactory("WETH9")
+        const WETH9 = (await weth9Factory.deploy()) as WETH9
+
+        const { WETH: WETH2, WBTC, USDC } = await collateralTokensFixture()
+
+        const collateralPriceFeedFixture = await createCollateralPriceFeedFixture()
+        const {
+            mockedAggregator: mockedWethAggregator,
+            chainlinkPriceFeed: wethChainlinkPriceFeed,
+        }: CollateralPriceFeedFixture = await collateralPriceFeedFixture(await WETH2.decimals(), "100")
+
+        const {
+            mockedAggregator: mockedWbtcAggregator,
+            chainlinkPriceFeed: wbtcChainlinkPriceFeed,
+        }: CollateralPriceFeedFixture = await collateralPriceFeedFixture(await WBTC.decimals(), "1000")
+
+        // TODO: initialize collateral manager using the ChainlinkPriceFeed contracts
+
+        // ======================================
         // deploy UniV3 ecosystem
         //
         const factoryFactory = await ethers.getContractFactory("UniswapV3Factory")
-        const uniV3Factory = (await factoryFactory.deploy()) as unknown as UniswapV3Factory
-        const weth9Factory = await ethers.getContractFactory("WETH9")
-        const weth9 = (await weth9Factory.deploy()) as WETH9
+        const uniV3Factory = (await factoryFactory.deploy()) as UniswapV3Factory
         const uniV3Router = (await (
             await ethers.getContractFactory("SwapRouter")
-        ).deploy(uniV3Factory.address, weth9.address)) as unknown as UniswapRouter
+        ).deploy(uniV3Factory.address, WETH9.address)) as UniswapRouter
+
+        const uniV3CalleeFactory = await ethers.getContractFactory("TestUniswapV3Callee")
+        const uniV3Callee = (await uniV3CalleeFactory.deploy()) as TestUniswapV3Callee
+
+        const poolFactory = await ethers.getContractFactory("UniswapV3Pool")
+
+        // deploy usdc/weth pool
+        await uniV3Factory.createPool(WETH2.address, USDC.address, uniFeeTier)
+        const poolWethUsdcAddr = await uniV3Factory.getPool(WETH2.address, USDC.address, uniFeeTier)
+        const poolWethUsdc = poolFactory.attach(poolWethUsdcAddr) as UniswapV3Pool
+
+        // deploy wbtc/weth pool
+        await uniV3Factory.createPool(WBTC.address, WETH2.address, uniFeeTier)
+        const poolWbtcWethAddr = await uniV3Factory.getPool(WBTC.address, WETH2.address, uniFeeTier)
+        const poolWbtcWeth = poolFactory.attach(poolWbtcWethAddr) as UniswapV3Pool
 
         // ======================================
         // deploy perp v2 ecosystem
         //
-        const uniFeeTier = 10000 // 1%
-
-        // deploy test tokens
-        const tokenFactory = await ethers.getContractFactory("TestERC20")
-        const USDC = (await tokenFactory.deploy()) as TestERC20
-        await USDC.__TestERC20_init("TestUSDC", "USDC", 6)
 
         let baseToken: BaseToken, quoteToken: QuoteToken, mockedBaseAggregator: MockContract
         const { token0, mockedAggregator0, token1 } = await tokensFixture()
@@ -77,7 +125,6 @@ export function createFixture(): () => Promise<Fixture> {
 
         // prepare uniswap factory
         await uniV3Factory.createPool(baseToken.address, quoteToken.address, uniFeeTier)
-        const poolFactory = await ethers.getContractFactory("UniswapV3Pool")
 
         const marketRegistryFactory = await ethers.getContractFactory("MarketRegistry")
         const marketRegistry = (await marketRegistryFactory.deploy()) as MarketRegistry
@@ -111,10 +158,10 @@ export function createFixture(): () => Promise<Fixture> {
         const vaultFactory = await ethers.getContractFactory("Vault")
         const vault = (await vaultFactory.deploy()) as Vault
         await vault.initialize(
-          insuranceFund.address,
-          clearingHouseConfig.address,
-          accountBalance.address,
-          exchange.address,
+            insuranceFund.address,
+            clearingHouseConfig.address,
+            accountBalance.address,
+            exchange.address,
         )
         await insuranceFund.setBorrower(vault.address)
         await accountBalance.setVault(vault.address)
@@ -140,13 +187,13 @@ export function createFixture(): () => Promise<Fixture> {
         const clearingHouseFactory = await ethers.getContractFactory("ClearingHouse")
         const clearingHouse = (await clearingHouseFactory.deploy()) as ClearingHouse
         await clearingHouse.initialize(
-          clearingHouseConfig.address,
-          vault.address,
-          quoteToken.address,
-          uniV3Factory.address,
-          exchange.address,
-          accountBalance.address,
-          insuranceFund.address,
+            clearingHouseConfig.address,
+            vault.address,
+            quoteToken.address,
+            uniV3Factory.address,
+            exchange.address,
+            accountBalance.address,
+            insuranceFund.address,
         )
 
         await clearingHouseConfig.setSettlementTokenBalanceCap(ethers.constants.MaxUint256)
@@ -162,9 +209,27 @@ export function createFixture(): () => Promise<Fixture> {
         await accountBalance.setClearingHouse(clearingHouse.address)
         await vault.setClearingHouse(clearingHouse.address)
 
+        // ======================================
+        // deploy liquidator
+        //
+
+        const liquidatorFactory = await ethers.getContractFactory("Liquidator")
+        const liquidator = (await liquidatorFactory.deploy()) as Liquidator
+        await liquidator.initialize(vault.address, uniV3Router.address)
+
         return {
+            USDC,
+            WETH9,
+            WETH2,
+            WBTC,
+            mockedWethAggregator,
+            poolWethUsdc,
+            mockedWbtcAggregator,
+            poolWbtcWeth,
+            liquidator,
             uniV3Factory,
             uniV3Router,
+            uniV3Callee,
             clearingHouse,
             orderBook,
             accountBalance,
@@ -175,7 +240,6 @@ export function createFixture(): () => Promise<Fixture> {
             insuranceFund,
             pool,
             uniFeeTier,
-            USDC,
             quoteToken,
             baseToken,
             mockedBaseAggregator,

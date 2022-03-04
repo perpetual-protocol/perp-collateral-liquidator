@@ -1,8 +1,10 @@
 import { MockContract, smockit } from "@eth-optimism/smock"
+import { parseUnits } from "ethers/lib/utils"
 import { ethers } from "hardhat"
 import { BaseToken, QuoteToken, VirtualToken } from "../../typechain/perp-curie"
-import { UniswapV3Factory, UniswapV3Pool } from "../../typechain/uniswap-v3-core"
 import { ChainlinkPriceFeed } from "../../typechain/perp-oracle"
+import { TestERC20 } from "../../typechain/test"
+import { UniswapV3Factory, UniswapV3Pool } from "../../typechain/uniswap-v3-core"
 import { isAscendingTokenOrder } from "./utilities"
 
 interface TokensFixture {
@@ -12,6 +14,12 @@ interface TokensFixture {
     mockedAggregator1: MockContract
 }
 
+interface CollateralTokensFixture {
+    // address in ascending order
+    WBTC: TestERC20
+    WETH: TestERC20
+    USDC: TestERC20
+}
 interface PoolFixture {
     factory: UniswapV3Factory
     pool: UniswapV3Pool
@@ -22,6 +30,11 @@ interface PoolFixture {
 interface BaseTokenFixture {
     baseToken: BaseToken
     mockedAggregator: MockContract
+}
+
+export interface CollateralPriceFeedFixture {
+    mockedAggregator: MockContract
+    chainlinkPriceFeed: ChainlinkPriceFeed
 }
 
 export function createQuoteTokenFixture(name: string, symbol: string): () => Promise<QuoteToken> {
@@ -53,6 +66,35 @@ export function createBaseTokenFixture(name: string, symbol: string): () => Prom
         await baseToken.initialize(name, symbol, chainlinkPriceFeed.address)
 
         return { baseToken, mockedAggregator }
+    }
+}
+
+export async function createCollateralTokenFixture(): Promise<TestERC20> {
+    const tokenFactory = await ethers.getContractFactory("TestERC20")
+    const token = (await tokenFactory.deploy()) as TestERC20
+    return token
+}
+
+export function createCollateralPriceFeedFixture(): (number, string) => Promise<CollateralPriceFeedFixture> {
+    return async (tokenDecimal: number, defaultPrice: string): Promise<CollateralPriceFeedFixture> => {
+        const aggregatorFactory = await ethers.getContractFactory("TestAggregatorV3")
+        const aggregator = await aggregatorFactory.deploy()
+        const mockedAggregator = await smockit(aggregator)
+
+        mockedAggregator.smocked.decimals.will.return.with(async () => {
+            return tokenDecimal
+        })
+
+        mockedAggregator.smocked.latestRoundData.will.return.with(async () => {
+            return [0, parseUnits(defaultPrice, tokenDecimal), 0, 0, 0]
+        })
+
+        const chainlinkPriceFeedFactory = await ethers.getContractFactory("ChainlinkPriceFeed")
+        const chainlinkPriceFeed = (await chainlinkPriceFeedFactory.deploy(
+            mockedAggregator.address,
+        )) as ChainlinkPriceFeed
+
+        return { chainlinkPriceFeed, mockedAggregator }
     }
 }
 
@@ -92,6 +134,28 @@ export async function tokensFixture(): Promise<TokensFixture> {
         mockedAggregator0,
         token1,
         mockedAggregator1,
+    }
+}
+
+export async function collateralTokensFixture(): Promise<CollateralTokensFixture> {
+    const token0 = await createCollateralTokenFixture()
+    const token1 = await createCollateralTokenFixture()
+    const token2 = await createCollateralTokenFixture()
+
+    // usdc > eth > btc
+    // to let us create these pools: eth/usdc, and btc/eth
+    const orderedToken = [token0, token1, token2].sort((tokenA, tokenB) =>
+        tokenA.address.toLowerCase() < tokenB.address.toLowerCase() ? -1 : 1,
+    )
+
+    await orderedToken[0].__TestERC20_init("WBTC", "WBTC", "8")
+    await orderedToken[1].__TestERC20_init("WETH", "WETH", "18")
+    await orderedToken[2].__TestERC20_init("USDC", "USDC", "6")
+
+    return {
+        WBTC: orderedToken[0],
+        WETH: orderedToken[1],
+        USDC: orderedToken[2],
     }
 }
 

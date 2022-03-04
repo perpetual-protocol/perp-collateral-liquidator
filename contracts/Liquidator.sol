@@ -10,17 +10,17 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IUniswapV3SwapCallback } from "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3SwapCallback.sol";
 import { IUniswapV3Pool } from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import { TickMath } from "@uniswap/v3-core/contracts/libraries/TickMath.sol";
+import { IPeripheryImmutableState } from "@uniswap/v3-periphery/contracts/interfaces/IPeripheryImmutableState.sol";
 import { ISwapRouter } from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-import { SwapRouter } from "@uniswap/v3-periphery/contracts/SwapRouter.sol";
-import { Collateral } from "@perp/curie-contract/contracts/lib/Collateral.sol";
+import { PoolAddress } from "@uniswap/v3-periphery/contracts/libraries/PoolAddress.sol";
+// import { Collateral } from "@perp/curie-contract/contracts/lib/Collateral.sol";
 import { IVault } from "@perp/curie-contract/contracts/interface/IVault.sol";
+
+import "hardhat/console.sol";
 
 contract Liquidator is IUniswapV3SwapCallback, Ownable {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
-
-    address internal _vault;
-    address internal _swapRouter;
 
     struct SwapCallbackData {
         bytes path;
@@ -30,9 +30,29 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         uint256 minSettlementAmount;
     }
 
+    struct Hop {
+        address tokenIn;
+        uint24 fee;
+        address tokenOut;
+    }
+
+    address internal _vault;
+    address internal _swapRouter;
+
+    //
+    // EXTERNAL NON-VIEW
+    //
+
     function initialize(address vaultArg, address swapRouter) external {
         _vault = vaultArg;
         _swapRouter = swapRouter;
+
+        address settlementToken = IVault(_vault).getSettlementToken();
+        IERC20(settlementToken).safeApprove(vaultArg, uint256(-1));
+    }
+
+    function withdraw(address token) external onlyOwner {
+        IERC20(token).safeTransfer(owner(), IERC20(token).balanceOf(address(this)));
     }
 
     function uniswapV3SwapCallback(
@@ -49,93 +69,95 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         // positive: liquidator give pool the collateral
         // negative: liquidator receive from pool (pathTail[0], or USDC)
         // liquidator to liquidate the exact amount of collateral token he's expected to send back to the pool
-        (uint256 exactOut, uint256 exactIn) =
+        (uint256 collateralAmount, uint256 firstHopOutAmount) =
             amount0Delta > amount1Delta
                 ? (uint256(amount0Delta), uint256(-amount1Delta))
                 : (uint256(amount1Delta), uint256(-amount0Delta));
 
         if (data.path.length > 0) {
+            // multi-hop, perform the rest hops
             ISwapRouter.ExactInputParams memory params =
                 ISwapRouter.ExactInputParams({
                     path: data.path, // abi.encodePacked(ETH, poolFee, USDC),
                     recipient: msg.sender,
                     deadline: block.timestamp,
-                    amountIn: exactIn,
+                    amountIn: firstHopOutAmount,
                     amountOutMinimum: data.minSettlementAmount
                 });
             ISwapRouter(_swapRouter).exactInput(params);
         } else {
+            // single-hop, firstHopOutAmount = settlement token received from swap
             // L_LTMSTP: less than minSettlementTokenProfit
-            require(exactIn >= data.minSettlementAmount, "L_LTMSTP");
+            require(firstHopOutAmount >= data.minSettlementAmount, "L_LTMSTP");
         }
 
-        // TODO: should approve settlement token before calling liquidation
-
-        IVault(_vault).liquidateCollateralExactOuput(data.trader, data.baseToken, exactOut);
+        // IVault(_vault).liquidateCollateralExactOutput(data.trader, data.baseToken, exactOut);
 
         // transfer amount
         address token = amount0Delta > 0 ? IUniswapV3Pool(data.pool).token0() : IUniswapV3Pool(data.pool).token1();
 
-        // L_TF: Transfer failed
-        // TODO: should be safeTransfer, not sure why linter shows error.
-        bool success = IERC20(token).transfer(data.pool, exactOut);
-        require(success, "L_TF");
+        IERC20(token).safeTransfer(data.pool, collateralAmount);
     }
 
     function flashLiquidate(
         address trader,
         uint256 maxSettlementTokenSpent,
-        uint256 minSettlementTokenProfit,
-        bytes memory pathHead, // [crv, fee, eth]
+        int256 minSettlementTokenProfit, // negative = allow liquidation at a loss
+        Hop memory pathHead, // [crv, fee, eth]
         bytes memory pathTail // [eth, fee, usdc]
     ) external {
-        // TODO: wip
-
-        (uint256 settlement, uint256 collateral) =
-            IVault(_vault).getLiquidationAmountOut(trader, pathHead[0], maxSettlementTokenSpent);
-
-        bool zeroForOne = pathHead[0] < pathTail[0];
-
-        address pool = getPool(pathHead[0], pathTail[0], pathHead[1]);
-
-        (int256 amount0, int256 amount1) =
-            IUniswapV3Pool(pool).swap(
-                msg.sender,
-                zeroForOne,
-                collateral.toInt256(),
-                (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1),
-                abi.encode(
-                    SwapCallbackData({
-                        path: pathTail,
-                        trader: trader,
-                        baseToken: pathHead[0],
-                        pool: pool,
-                        minSettlementAmount: settlement.add(minSettlementTokenProfit)
-                    })
-                )
-            );
+        // (uint256 settlement, uint256 collateral) = IVault(_vault).getMaxLiquidationAmounts(trader, pathHead.tokenIn);
+        // if (settlement > maxSettlementTokenSpent) {
+        //     collateral = IVault(_vault).getLiquidationAmountOut(pathHead.tokenIn, maxSettlementTokenSpent);
+        // }
+        // bool zeroForOne = pathHead.tokenIn < pathHead.tokenOut;
+        // address pool = _getPool(pathHead.tokenIn, pathHead.tokenOut, pathHead.fee);
+        // int256 minSettlementAmount = settlement.toInt256().add(minSettlementTokenProfit);
+        // (int256 amount0, int256 amount1) =
+        //     IUniswapV3Pool(pool).swap(
+        //         address(this),
+        //         zeroForOne,
+        //         collateral.toInt256(),
+        //         (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1),
+        //         abi.encode(
+        //             SwapCallbackData({
+        //                 path: pathTail,
+        //                 trader: trader,
+        //                 baseToken: pathHead.tokenIn,
+        //                 pool: pool,
+        //                 minSettlementAmount: minSettlementAmount < 0 ? 0 : minSettlementAmount.toUint256()
+        //             })
+        //         )
+        //     );
     }
 
-    function getMaxProfitableCollateral(address trader) public view returns (address targetCollateral) {
-        address[] memory collaterals = IVault(_vault).getCollateralTokens(trader);
-        uint256 collateralLength = collaterals.length;
-        uint256 maxValue = 0;
-        targetCollateral = address(0x0);
-
-        for (uint256 i = 0; i < collateralLength; i++) {
-            uint256 value = IVault(_vault).getMaxLiquidationValue(trader, collaterals[i]);
-            if (value > maxValue) {
-                maxValue = value;
-                targetCollateral = collaterals[i];
-            }
-        }
+    function getMaxProfitableCollateral(address trader) external view returns (address targetCollateral) {
+        // address[] memory collaterals = IVault(_vault).getCollateralTokens(trader);
+        // uint256 collateralLength = collaterals.length;
+        // uint256 maxValue = 0;
+        // targetCollateral = address(0x0);
+        // for (uint256 i = 0; i < collateralLength; i++) {
+        //     uint256 value = IVault(_vault).getMaxLiquidationAmounts(trader, collaterals[i]);
+        //     if (value > maxValue) {
+        //         maxValue = value;
+        //         targetCollateral = collaterals[i];
+        //     }
+        // }
     }
 
-    function getPool(
+    //
+    // PRIVATE VIEW
+    //
+
+    function _getPool(
         address tokenA,
         address tokenB,
         uint24 fee
     ) private view returns (address) {
-        return SwapRouter(_swapRouter).getPool(tokenA, tokenB, fee);
+        return
+            PoolAddress.computeAddress(
+                IPeripheryImmutableState(_swapRouter).factory(),
+                PoolAddress.getPoolKey(tokenA, tokenB, fee)
+            );
     }
 }
