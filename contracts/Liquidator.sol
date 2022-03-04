@@ -132,17 +132,17 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
     }
 
     function getMaxProfitableCollateral(address trader) external view returns (address targetCollateral) {
-        // address[] memory collaterals = IVault(_vault).getCollateralTokens(trader);
-        // uint256 collateralLength = collaterals.length;
-        // uint256 maxValue = 0;
-        // targetCollateral = address(0x0);
-        // for (uint256 i = 0; i < collateralLength; i++) {
-        //     uint256 value = IVault(_vault).getMaxLiquidationAmounts(trader, collaterals[i]);
-        //     if (value > maxValue) {
-        //         maxValue = value;
-        //         targetCollateral = collaterals[i];
-        //     }
-        // }
+        address[] memory collaterals = IVault(_vault).getCollateralTokens(trader);
+        uint256 collateralLength = collaterals.length;
+        uint256 maxValue = 0;
+        targetCollateral = address(0x0);
+        for (uint256 i = 0; i < collateralLength; i++) {
+            (uint256 value, ) = IVault(_vault).getMaxLiquidationAmounts(trader, collaterals[i]);
+            if (value > maxValue) {
+                maxValue = value;
+                targetCollateral = collaterals[i];
+            }
+        }
     }
 
     //

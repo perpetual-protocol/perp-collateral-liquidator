@@ -216,7 +216,6 @@ describe("Liquidator", () => {
 
         describe("deposit only one non-settlement token", () => {
             beforeEach(async () => {
-                await deposit(alice, vault, 100, usdc)
                 await deposit(alice, vault, 1, weth)
             })
 
