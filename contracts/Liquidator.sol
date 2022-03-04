@@ -4,7 +4,9 @@ pragma abicoder v2;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { SafeMath } from "@openzeppelin/contracts/math/SafeMath.sol";
+import { SignedSafeMath } from "@openzeppelin/contracts/math/SignedSafeMath.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import { SafeCast } from "@openzeppelin/contracts/utils/SafeCast.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { IUniswapV3SwapCallback } from "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3SwapCallback.sol";
@@ -20,6 +22,9 @@ import "hardhat/console.sol";
 
 contract Liquidator is IUniswapV3SwapCallback, Ownable {
     using SafeMath for uint256;
+    using SafeCast for uint256;
+    using SignedSafeMath for int256;
+    using SafeCast for int256;
     using SafeERC20 for IERC20;
 
     struct SwapCallbackData {
@@ -69,10 +74,10 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         // positive: liquidator give pool the collateral
         // negative: liquidator receive from pool (pathTail[0], or USDC)
         // liquidator to liquidate the exact amount of collateral token he's expected to send back to the pool
-        (uint256 collateralAmount, uint256 firstHopOutAmount) =
+        (uint256 collateralAmount, uint256 firstHopOutAmount, address collateralToken) =
             amount0Delta > amount1Delta
-                ? (uint256(amount0Delta), uint256(-amount1Delta))
-                : (uint256(amount1Delta), uint256(-amount0Delta));
+                ? (uint256(amount0Delta), uint256(-amount1Delta), IUniswapV3Pool(data.pool).token0())
+                : (uint256(amount1Delta), uint256(-amount0Delta), IUniswapV3Pool(data.pool).token1());
 
         if (data.path.length > 0) {
             // multi-hop, perform the rest hops
@@ -91,12 +96,10 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
             require(firstHopOutAmount >= data.minSettlementAmount, "L_LTMSTP");
         }
 
-        // IVault(_vault).liquidateCollateralExactOutput(data.trader, data.baseToken, exactOut);
+        IVault(_vault).liquidateCollateralExactOutput(data.trader, data.baseToken, collateralAmount);
 
-        // transfer amount
-        address token = amount0Delta > 0 ? IUniswapV3Pool(data.pool).token0() : IUniswapV3Pool(data.pool).token1();
-
-        IERC20(token).safeTransfer(data.pool, collateralAmount);
+        // transfer the collateral to uniswap pool
+        IERC20(collateralToken).safeTransfer(data.pool, collateralAmount);
     }
 
     function flashLiquidate(
@@ -106,29 +109,29 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         Hop memory pathHead, // [crv, fee, eth]
         bytes memory pathTail // [eth, fee, usdc]
     ) external {
-        // (uint256 settlement, uint256 collateral) = IVault(_vault).getMaxLiquidationAmounts(trader, pathHead.tokenIn);
-        // if (settlement > maxSettlementTokenSpent) {
-        //     collateral = IVault(_vault).getLiquidationAmountOut(pathHead.tokenIn, maxSettlementTokenSpent);
-        // }
-        // bool zeroForOne = pathHead.tokenIn < pathHead.tokenOut;
-        // address pool = _getPool(pathHead.tokenIn, pathHead.tokenOut, pathHead.fee);
-        // int256 minSettlementAmount = settlement.toInt256().add(minSettlementTokenProfit);
-        // (int256 amount0, int256 amount1) =
-        //     IUniswapV3Pool(pool).swap(
-        //         address(this),
-        //         zeroForOne,
-        //         collateral.toInt256(),
-        //         (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1),
-        //         abi.encode(
-        //             SwapCallbackData({
-        //                 path: pathTail,
-        //                 trader: trader,
-        //                 baseToken: pathHead.tokenIn,
-        //                 pool: pool,
-        //                 minSettlementAmount: minSettlementAmount < 0 ? 0 : minSettlementAmount.toUint256()
-        //             })
-        //         )
-        //     );
+        (uint256 settlement, uint256 collateral) = IVault(_vault).getMaxLiquidationAmounts(trader, pathHead.tokenIn);
+        if (settlement > maxSettlementTokenSpent) {
+            collateral = IVault(_vault).getLiquidationAmountOut(pathHead.tokenIn, maxSettlementTokenSpent);
+        }
+        bool zeroForOne = pathHead.tokenIn < pathHead.tokenOut;
+        address pool = _getPool(pathHead.tokenIn, pathHead.tokenOut, pathHead.fee);
+        int256 minSettlementAmount = settlement.toInt256().add(minSettlementTokenProfit);
+        bytes memory data = abi.encode(
+            SwapCallbackData({
+                path : pathTail,
+                trader : trader,
+                baseToken : pathHead.tokenIn,
+                pool : pool,
+                minSettlementAmount : minSettlementAmount < 0 ? 0 : minSettlementAmount.toUint256()
+            })
+        );
+        IUniswapV3Pool(pool).swap(
+            address(this),
+            zeroForOne,
+            collateral.toInt256(),
+            (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1),
+            data
+        );
     }
 
     function getMaxProfitableCollateral(address trader) external view returns (address targetCollateral) {
