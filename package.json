@@ -13,7 +13,7 @@
     "typechain-uniswap-v3-core": "typechain --target ethers-v5 --out-dir ./typechain/uniswap-v3-core ./node_modules/@uniswap/v3-core/artifacts/contracts/**/*.json",
     "typechain-uniswap-v3-periphery": "typechain --target ethers-v5 --out-dir ./typechain/uniswap-v3-periphery ./node_modules/@uniswap/v3-periphery/artifacts/contracts/**/*.json",
     "typechain-perp-oracle": "typechain --target ethers-v5 --out-dir ./typechain/perp-oracle ./node_modules/@perp/perp-oracle-contract/artifacts/contracts/**/*.json",
-    "typechain-perp-curie": "typechain --target ethers-v5 --out-dir ./typechain/perp-curie ./tmp/@perp/artifacts/contracts/**/*.json",
+    "typechain-perp-curie": "typechain --target ethers-v5 --out-dir ./typechain/perp-curie ./node_modules/@perp/curie-contract/artifacts/contracts/**/*.json",
     "typechain-test": "typechain --target ethers-v5 --out-dir ./typechain/test ./test/artifacts/**/*.json",
     "build": "npm run typechain && hardhat compile",
     "test": "hardhat test"
