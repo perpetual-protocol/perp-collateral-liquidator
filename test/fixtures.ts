@@ -1,4 +1,5 @@
 import { MockContract } from "@eth-optimism/smock"
+import { parseEther, parseUnits } from "ethers/lib/utils"
 import { ethers } from "hardhat"
 import { Liquidator, TestUniswapV3Callee } from "../typechain"
 import {
@@ -6,6 +7,7 @@ import {
     BaseToken,
     ClearingHouse,
     ClearingHouseConfig,
+    CollateralManager,
     Exchange,
     InsuranceFund,
     MarketRegistry,
@@ -46,6 +48,7 @@ export interface Fixture {
     marketRegistry: MarketRegistry
     clearingHouseConfig: ClearingHouseConfig
     exchange: Exchange
+    collateralManager: CollateralManager
     vault: Vault
     insuranceFund: InsuranceFund
     pool: UniswapV3Pool
@@ -69,6 +72,7 @@ export function createFixture(): () => Promise<Fixture> {
         const WETH9 = (await weth9Factory.deploy()) as WETH9
 
         const { WETH: WETH2, WBTC, USDC } = await collateralTokensFixture()
+        const usdcDecimals = await USDC.decimals()
 
         const collateralPriceFeedFixture = await createCollateralPriceFeedFixture()
         const {
@@ -80,8 +84,6 @@ export function createFixture(): () => Promise<Fixture> {
             mockedAggregator: mockedWbtcAggregator,
             chainlinkPriceFeed: wbtcChainlinkPriceFeed,
         }: CollateralPriceFeedFixture = await collateralPriceFeedFixture(await WBTC.decimals(), "1000")
-
-        // TODO: initialize collateral manager using the ChainlinkPriceFeed contracts
 
         // ======================================
         // deploy UniV3 ecosystem
@@ -166,6 +168,31 @@ export function createFixture(): () => Promise<Fixture> {
         await insuranceFund.setBorrower(vault.address)
         await accountBalance.setVault(vault.address)
 
+        // deploy collateral manager
+        const collateralManagerFactory = await ethers.getContractFactory("CollateralManager")
+        const collateralManager = (await collateralManagerFactory.deploy()) as CollateralManager
+        await collateralManager.initialize(
+            5, // maxCollateralTokensPerAccount
+            "750000", // debtNonSettlementTokenValueRatio
+            "500000", // liquidationRatio
+            "2000", // maintenanceMarginRatioBuffer
+            "30000", // clInsuranceFundFeeRatio
+            parseUnits("10000", usdcDecimals), // debtThreshold
+            parseUnits("50", usdcDecimals), // collateralValueDust
+        )
+        await collateralManager.addCollateral(WETH2.address, {
+            priceFeed: wethChainlinkPriceFeed.address,
+            collateralRatio: (0.8e6).toString(),
+            discountRatio: (0.1e6).toString(),
+            depositCap: parseEther("1000"),
+        })
+        await collateralManager.addCollateral(WBTC.address, {
+            priceFeed: wbtcChainlinkPriceFeed.address,
+            collateralRatio: (0.8e6).toString(),
+            discountRatio: (0.1e6).toString(),
+            depositCap: parseUnits("1000", await WBTC.decimals()),
+        })
+
         // deploy a pool
         const poolAddr = await uniV3Factory.getPool(baseToken.address, quoteToken.address, uniFeeTier)
         const pool = poolFactory.attach(poolAddr) as UniswapV3Pool
@@ -208,6 +235,7 @@ export function createFixture(): () => Promise<Fixture> {
         await exchange.setClearingHouse(clearingHouse.address)
         await accountBalance.setClearingHouse(clearingHouse.address)
         await vault.setClearingHouse(clearingHouse.address)
+        await vault.setCollateralManager(collateralManager.address)
 
         // ======================================
         // deploy liquidator
@@ -236,6 +264,7 @@ export function createFixture(): () => Promise<Fixture> {
             marketRegistry,
             clearingHouseConfig,
             exchange,
+            collateralManager,
             vault,
             insuranceFund,
             pool,
