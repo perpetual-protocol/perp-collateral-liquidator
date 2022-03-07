@@ -58,7 +58,7 @@ describe("Liquidator", () => {
             referralCode: ethers.constants.HashZero,
         })
 
-        // case1: only has 1eth
+        // default case: only has 1eth
         // non-settlement value threshold: 1 * 100 * 0.8 * 0.75 = 60
         // alice position size = 100 / 151.3733069 = 0.6606184541
         // desired alice loss > 60
@@ -242,7 +242,7 @@ describe("Liquidator", () => {
             })
 
             it("get the correct collateral when has debt", async () => {
-                // case2: has 1eth and 0.05btc:
+                // alice has 1eth and 0.05btc:
                 // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8)* 0.75 = 90
                 // alice position size = 100 / 151.3733069 = 0.6606184541
                 // desired alice loss > 90

@@ -58,6 +58,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         IERC20(token).safeTransfer(owner(), IERC20(token).balanceOf(address(this)));
     }
 
+    /// @inheritdoc IUniswapV3SwapCallback
     function uniswapV3SwapCallback(
         int256 amount0Delta,
         int256 amount1Delta,
@@ -111,12 +112,24 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         IERC20(collateralToken).safeTransfer(data.pool, collateralAmount);
     }
 
+    /// @notice Liquidate tradedr's collateral by using flash swap on uniswap v3
+    /// @param trader The address of the liquidatable trader
+    /// @param maxSettlementTokenSpent The maximum amount of the settlement token
+    ///                                should be paid to the Vault
+    /// @param minSettlementTokenProfit The minimum amount of the settlement token
+    ///                                 should be earned (negative = allow liquidation at a loss)
+    /// @param pathHead Path for swapping tokens
+    ///                 For single swaps, it's somewhat like { tokenIn: eth, fee, tokenOut: usdc }
+    ///                 For multihop swaps, it's somewhat like { tokenIn: perp, fee, tokenOut: eth }
+    /// @param pathTail To fulfill multihop swaps, this is the path after `pathHead`
+    ///                 For single swaps, directly pass `0x`
+    ///                 For multihop swaps, it's somewhat like `abi.encodePacked(eth, fee, usdc)`
     function flashLiquidate(
         address trader,
         uint256 maxSettlementTokenSpent,
-        int256 minSettlementTokenProfit, // negative = allow liquidation at a loss
-        Hop memory pathHead, // [crv, fee, eth]
-        bytes memory pathTail // [eth, fee, usdc]
+        int256 minSettlementTokenProfit,
+        Hop memory pathHead,
+        bytes memory pathTail
     ) external {
         (uint256 settlement, uint256 collateral) = IVault(_vault).getMaxLiquidationAmounts(trader, pathHead.tokenIn);
         // L_NL: not liquidatable
@@ -147,6 +160,9 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         );
     }
 
+    /// @notice Get the most profitable collateral from the liquidatable trader
+    /// @param trader The address of the liquidatable trader
+    /// @return targetCollateral The most profitable collateral from the liquidatable trader
     function getMaxProfitableCollateral(address trader) external view returns (address targetCollateral) {
         address[] memory collaterals = IVault(_vault).getCollateralTokens(trader);
         uint256 collateralLength = collaterals.length;
