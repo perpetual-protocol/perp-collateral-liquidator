@@ -18,8 +18,6 @@ import { PoolAddress } from "@uniswap/v3-periphery/contracts/libraries/PoolAddre
 // import { Collateral } from "@perp/curie-contract/contracts/lib/Collateral.sol";
 import { IVault } from "@perp/curie-contract/contracts/interface/IVault.sol";
 
-import "hardhat/console.sol";
-
 contract Liquidator is IUniswapV3SwapCallback, Ownable {
     using SafeMath for uint256;
     using SafeCast for uint256;
@@ -74,17 +72,28 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         // positive: liquidator give pool the collateral
         // negative: liquidator receive from pool (pathTail[0], or USDC)
         // liquidator to liquidate the exact amount of collateral token he's expected to send back to the pool
-        (uint256 collateralAmount, uint256 firstHopOutAmount, address collateralToken) =
+        (uint256 collateralAmount, uint256 firstHopOutAmount, address collateralToken, address firstHopOutToken) =
             amount0Delta > amount1Delta
-                ? (uint256(amount0Delta), uint256(-amount1Delta), IUniswapV3Pool(data.pool).token0())
-                : (uint256(amount1Delta), uint256(-amount0Delta), IUniswapV3Pool(data.pool).token1());
+                ? (
+                    uint256(amount0Delta),
+                    uint256(-amount1Delta),
+                    IUniswapV3Pool(data.pool).token0(),
+                    IUniswapV3Pool(data.pool).token1()
+                )
+                : (
+                    uint256(amount1Delta),
+                    uint256(-amount0Delta),
+                    IUniswapV3Pool(data.pool).token1(),
+                    IUniswapV3Pool(data.pool).token0()
+                );
 
         if (data.path.length > 0) {
             // multi-hop, perform the rest hops
+            IERC20(firstHopOutToken).safeApprove(_swapRouter, firstHopOutAmount);
             ISwapRouter.ExactInputParams memory params =
                 ISwapRouter.ExactInputParams({
                     path: data.path, // abi.encodePacked(ETH, poolFee, USDC),
-                    recipient: msg.sender,
+                    recipient: address(this),
                     deadline: block.timestamp,
                     amountIn: firstHopOutAmount,
                     amountOutMinimum: data.minSettlementAmount
@@ -100,9 +109,6 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
 
         // transfer the collateral to uniswap pool
         IERC20(collateralToken).safeTransfer(data.pool, collateralAmount);
-
-        console.log("collateralAmount:", collateralAmount);
-        console.log("firstHopOutAmount:", firstHopOutAmount);
     }
 
     function flashLiquidate(
@@ -113,8 +119,9 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         bytes memory pathTail // [eth, fee, usdc]
     ) external {
         (uint256 settlement, uint256 collateral) = IVault(_vault).getMaxLiquidationAmounts(trader, pathHead.tokenIn);
-        console.log("max settlement:", settlement);
-        console.log("max collateral:", collateral);
+        // L_NL: not liquidatable
+        require(settlement > 0, "L_NL");
+
         if (settlement > maxSettlementTokenSpent) {
             collateral = IVault(_vault).getLiquidationAmountOut(pathHead.tokenIn, maxSettlementTokenSpent);
         }
