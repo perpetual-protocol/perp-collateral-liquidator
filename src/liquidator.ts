@@ -173,7 +173,10 @@ export class Liquidator {
             return
         }
 
-        const targetCollateralAddress = await this.contract.getMaxProfitableCollateral(account)
+        const targetCollateralAddress = await this.contract.getMaxProfitableCollateralFromCollaterals(
+            account,
+            Object.keys(this.metadata.pathMap),
+        )
 
         const path = this.metadata.pathMap[targetCollateralAddress]
 
