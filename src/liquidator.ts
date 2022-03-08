@@ -10,10 +10,6 @@ import config from "./config"
 import allMetadata, { Hop } from "./metadata"
 import { sleep } from "./utils"
 
-interface LiquidatorSecrets {
-    LIQUIDATOR_PK: string
-}
-
 interface GraphData {
     id: string
 }
@@ -121,12 +117,14 @@ export class Liquidator {
         const extractDataFunc = (data: any): GraphData => {
             return data.data[type]
         }
-        return (await this.queryAndExtractSubgraphAll(createQueryFunc, extractDataFunc)).map(accountData => accountData.id)
+        return (await this.queryAndExtractSubgraphAll(createQueryFunc, extractDataFunc)).map(
+            accountData => accountData.id,
+        )
     }
 
     async queryAndExtractSubgraphAll(
-      createQueryFunc: (batchSize: number, lastID: string) => string,
-      extractDataFunc: (data: any) => any,
+        createQueryFunc: (batchSize: number, lastID: string) => string,
+        extractDataFunc: (data: any) => any,
     ): Promise<GraphData[]> {
         let results: GraphData[] = []
         // batchSize should between 0 ~ 1000
