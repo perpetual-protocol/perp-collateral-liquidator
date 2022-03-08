@@ -1,25 +1,18 @@
-import { sleep } from "@perp/common/build/lib/helper"
-import { Log } from "@perp/common/build/lib/loggers"
-import { BotService } from "@perp/common/build/lib/perp/BotService"
-import { PerpService } from "@perp/common/build/lib/perp/PerpService"
 import { Mutex } from "async-mutex"
 import { Big } from "big.js"
 import "dotenv/config"
 import { ethers, Wallet } from "ethers"
 import _ from "lodash"
 import { Liquidator as LiquidatorContract, Liquidator__factory } from "../typechain"
+import { Vault, Vault__factory } from "../typechain/perp-curie"
 import { IERC20Metadata__factory } from "../typechain/perp-curie/factories/IERC20Metadata__factory"
 import { IERC20Metadata } from "../typechain/perp-curie/IERC20Metadata"
-import allMetadata from "./metadata"
+import config from "./config"
+import allMetadata, { Hop } from "./metadata"
+import { sleep } from "./utils"
 
 export interface LiquidatorSecrets {
     LIQUIDATOR_PK: string
-}
-
-interface Account {
-    address: string
-    orderBaseTokens: string[]
-    positionBaseTokens: string[]
 }
 
 // Alchemy's current rate limit is 660 CU per second, and an eth_call takes 26 CU
@@ -27,19 +20,23 @@ interface Account {
 // https://docs.alchemy.com/alchemy/documentation/rate-limits
 const REQUEST_CHUNK_SIZE = 25
 
-export class Liquidator extends BotService {
-    readonly log = Log.getLogger(Liquidator.name)
+const network = +process.env.NETWORK
+
+export class Liquidator {
     contract: LiquidatorContract
     wallet: Wallet
-    settlementToken: IERC20Metadata
     mutex: Mutex
+    vault: Vault
+    settlementToken: IERC20Metadata
+    settlementTokenDeciamls: number
+    metadata: typeof allMetadata[10]
 
     async setup(): Promise<void> {
         console.log({
             event: "SetupLiquidator",
         })
 
-        const metadata = allMetadata[+process.env.NETWORK]
+        this.metadata = allMetadata[+process.env.NETWORK]
 
         this.wallet = new Wallet(process.env.LIQUIDATOR_KEY).connect(
             new ethers.providers.StaticJsonRpcProvider(process.env.RPC_URL),
@@ -47,9 +44,12 @@ export class Liquidator extends BotService {
 
         this.contract = Liquidator__factory.connect(process.env.LIQUIDATOR_CONTRACT, this.wallet)
 
+        this.vault = Vault__factory.connect(this.metadata.core.contracts.Vault.address, this.wallet)
+
         this.mutex = new Mutex()
 
-        this.settlementToken = IERC20Metadata__factory.connect(metadata.core.externalContracts.USDC, this.wallet)
+        this.settlementToken = IERC20Metadata__factory.connect(this.metadata.core.externalContracts.USDC, this.wallet)
+        this.settlementTokenDeciamls = await this.settlementToken.decimals()
 
         console.log({
             event: "LiquidatorWalletFetched",
@@ -72,18 +72,16 @@ export class Liquidator extends BotService {
     }
 
     async start(): Promise<void> {
-        this.ethService.enableEndpointRotation()
-
-        let makers: Account[]
-        let traders: Account[]
+        let makers: string[]
+        let traders: string[]
         while (true) {
-            this.markRoutineAlive("LiquidateRoutine")
             try {
+                // TODO: WIP
                 const results = await Promise.all([this.fetchMakers(), this.fetchTraders()])
                 makers = results[0]
                 traders = results[1]
             } catch (err: any) {
-                await this.jerror({
+                console.error({
                     event: "FetchMakerTraderError",
                     params: {
                         err,
@@ -95,27 +93,13 @@ export class Liquidator extends BotService {
                 continue
             }
 
-            const accountsMap: Record<string, Account> = {}
-            for (const account of [...makers, ...traders]) {
-                const defaultAccount: Account = {
-                    address: account.address,
-                    orderBaseTokens: [],
-                    positionBaseTokens: [],
-                }
-                accountsMap[account.address] = Object.assign(
-                    _.defaultTo(accountsMap[account.address], defaultAccount),
-                    account,
-                )
-            }
+            const accounts = [...makers, ...traders]
 
-            for (const chunkedAccounts of _.chunk(Object.values(accountsMap), REQUEST_CHUNK_SIZE)) {
+            for (const chunkedAccounts of _.chunk(accounts, REQUEST_CHUNK_SIZE)) {
                 await Promise.all(
                     chunkedAccounts.map(account => {
-                        this.log.jinfo({ event: "LiquidateAccount", params: account })
-
-                        // We cancel all orders on each markets first,
-                        // then call liquidate on each markets.
-                        return this.simulateThenCancelOrdersAndLiquidate(account)
+                        console.log({ event: "TryLiquidateAccountCollateral", params: account })
+                        return this.tryLiquidate(account)
                     }),
                 )
             }
@@ -178,7 +162,35 @@ export class Liquidator extends BotService {
         return await this.graphService.queryAll<any>(createQueryFunc, extractDataFunc)
     }
 
-    async simulateThenCancelOrdersAndLiquidate(account: Account): Promise<void> {
+    async tryLiquidate(account: string): Promise<void> {
+        // vault.isLiqudatable()
+        // liqudiator.getMaxProfitableCollateral()
+        // static call liqudiator.flashLiquidate()
+        // liqudiator.flashLiquidate()
+
+        if (!(await this.vault.isLiquidatable(account))) {
+            return
+        }
+
+        const targetCollateralAddress = await this.contract.getMaxProfitableCollateral(account)
+
+        const path = this.metadata.pathMap[targetCollateralAddress]
+
+        if (!path) {
+            console.warn({ event: "UnknownCollateral", params: { collateral: targetCollateralAddress } })
+            return
+        }
+
+        const args: [string, ethers.BigNumberish, ethers.BigNumberish, Hop, ethers.BytesLike] = [
+            account,
+            ethers.utils.formatUnits(config.maxSettlementTokenSpent, this.settlementTokenDeciamls),
+            ethers.utils.formatUnits(config.minSettlementTokenProfit, this.settlementTokenDeciamls),
+            path[0],
+            path[1] || "0x",
+        ]
+
+        await this.contract.callStatic.flashLiquidate(...args)
+
         const orderBook = this.perpService.createOrderBook(this.wallet)
         const clearingHouse = this.perpService.createClearingHouse(this.wallet)
         const trader = account.address

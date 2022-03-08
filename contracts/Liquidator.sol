@@ -163,6 +163,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
     /// @notice Get the most profitable collateral from the liquidatable trader
     /// @param trader The address of the liquidatable trader
     /// @return targetCollateral The most profitable collateral from the liquidatable trader
+    // TODO: add collateral filter list parameter
     function getMaxProfitableCollateral(address trader) external view returns (address targetCollateral) {
         address[] memory collaterals = IVault(_vault).getCollateralTokens(trader);
         uint256 collateralLength = collaterals.length;
