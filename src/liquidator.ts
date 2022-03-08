@@ -1,5 +1,4 @@
 import { Mutex } from "async-mutex"
-import { Big } from "big.js"
 import "dotenv/config"
 import { ethers, Wallet } from "ethers"
 import _ from "lodash"
@@ -11,8 +10,12 @@ import config from "./config"
 import allMetadata, { Hop } from "./metadata"
 import { sleep } from "./utils"
 
-export interface LiquidatorSecrets {
+interface LiquidatorSecrets {
     LIQUIDATOR_PK: string
+}
+
+interface GraphData {
+    id: string
 }
 
 // Alchemy's current rate limit is 660 CU per second, and an eth_call takes 26 CU
@@ -21,6 +24,7 @@ export interface LiquidatorSecrets {
 const REQUEST_CHUNK_SIZE = 25
 
 export class Liquidator {
+    subgraphEndpoint: string
     contract: LiquidatorContract
     wallet: Wallet
     mutex: Mutex
@@ -35,10 +39,12 @@ export class Liquidator {
             event: "SetupLiquidator",
         })
 
+        this.subgraphEndpoint = process.env.SUBGRAPH_ENDPT
+
         this.metadata = allMetadata[+process.env.NETWORK]
 
         this.wallet = new Wallet(process.env.LIQUIDATOR_KEY).connect(
-            new ethers.providers.StaticJsonRpcProvider(process.env.RPC_URL),
+            new ethers.providers.StaticJsonRpcProvider(process.env.WEB3_ENDPT),
         )
 
         this.nextNonce = await this.wallet.getTransactionCount()
@@ -76,8 +82,7 @@ export class Liquidator {
         let traders: string[]
         while (true) {
             try {
-                // TODO: WIP
-                const results = await Promise.all([this.fetchMakers(), this.fetchTraders()])
+                const results = await Promise.all([this.fetchAccounts("makers"), this.fetchAccounts("traders")])
                 makers = results[0]
                 traders = results[1]
             } catch (err: any) {
@@ -106,60 +111,63 @@ export class Liquidator {
         }
     }
 
-    async fetchMakers(): Promise<string[]> {
+    async fetchAccounts(type: "traders" | "makers"): Promise<string[]> {
         const createQueryFunc = (batchSize: number, lastID: string) => `
         {
-            makers(first: ${batchSize}, where: {id_gt: "${lastID}"}) {
+            ${type}(first: ${batchSize}, where: {id_gt: "${lastID}"}) {
                 id
-                openOrders(where: {liquidity_gt: 0}) {
-                    baseToken
-                }
             }
         }`
-        const extractDataFunc = (data: any) => {
-            return data.data.makers.flatMap((maker: any) => {
-                const orderBaseTokens = _.uniq(maker.openOrders.map((openOrder: any) => openOrder.baseToken))
-                if (orderBaseTokens.length > 0) {
-                    return [
-                        {
-                            address: maker.id,
-                            orderBaseTokens,
-                        },
-                    ]
-                } else {
-                    return []
-                }
-            })
+        const extractDataFunc = (data: any): GraphData => {
+            return data.data[type]
         }
-        return await this.graphService.queryAll<any>(createQueryFunc, extractDataFunc)
+        return (await this.queryAndExtractSubgraphAll(createQueryFunc, extractDataFunc)).map(accountData => accountData.id)
     }
 
-    async fetchTraders(): Promise<string[]> {
-        const createQueryFunc = (batchSize: number, lastID: string) => `
-        {
-            traders(first: ${batchSize}, where: {id_gt: "${lastID}"}) {
-                id
-                positions(where: {positionSize_not: 0}) {
-                    baseToken
-                }
+    async queryAndExtractSubgraphAll(
+      createQueryFunc: (batchSize: number, lastID: string) => string,
+      extractDataFunc: (data: any) => any,
+    ): Promise<GraphData[]> {
+        let results: GraphData[] = []
+        // batchSize should between 0 ~ 1000
+        const batchSize = 1000
+        let lastID = ""
+        while (true) {
+            const query = createQueryFunc(batchSize, lastID)
+            const data = await this.querySubgraph(query)
+            if (data.errors) {
+                break
             }
-        }`
-        const extractDataFunc = (data: any) => {
-            return data.data.traders.flatMap((trader: any) => {
-                const positionBaseTokens = _.uniq(trader.positions.map((position: any) => position.baseToken))
-                if (positionBaseTokens.length > 0) {
-                    return [
-                        {
-                            address: trader.id,
-                            positionBaseTokens,
-                        },
-                    ]
-                } else {
-                    return []
-                }
+            const batch = extractDataFunc(data)
+            if (batch.length === 0) {
+                break
+            }
+            results = [...results, ...batch]
+            lastID = results[results.length - 1].id
+        }
+        return results
+    }
+
+    async querySubgraph(query: string): Promise<any> {
+        const resp = await fetch(this.subgraphEndpoint, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+            },
+            body: JSON.stringify({ query }),
+        })
+        const data = await resp.json()
+        if (data.errors) {
+            console.error({
+                event: "GraphQueryError",
+                params: {
+                    err: new Error("GraphQueryError"),
+                    errors: data.errors,
+                },
             })
         }
-        return await this.graphService.queryAll<any>(createQueryFunc, extractDataFunc)
+        return data
     }
 
     async tryLiquidate(account: string): Promise<void> {
