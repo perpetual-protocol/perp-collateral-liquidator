@@ -254,6 +254,114 @@ describe("Liquidator", () => {
         })
     })
 
+    describe("getMaxProfitableCollateralFromCollaterals", () => {
+        describe("no collaterals", () => {
+            it("get the correct collateral", async () => {
+                expect(await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [])).to.eq(nullAddress)
+                expect(
+                    await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [
+                        weth.address,
+                        wbtc.address,
+                    ]),
+                ).to.eq(nullAddress)
+            })
+        })
+
+        describe("deposit only settlement token", () => {
+            beforeEach(async () => {
+                await deposit(alice, vault, 100, usdc)
+            })
+
+            it("get the correct collateral when no debt", async () => {
+                expect(
+                    await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [
+                        weth.address,
+                        wbtc.address,
+                    ]),
+                ).to.eq(nullAddress)
+            })
+
+            it("get the correct collateral when has debt", async () => {
+                await makeAliceNonUsdCollateralLiquidatable()
+                expect(
+                    await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [
+                        weth.address,
+                        wbtc.address,
+                    ]),
+                ).to.eq(nullAddress)
+            })
+        })
+
+        describe("deposit only one non-settlement token", () => {
+            beforeEach(async () => {
+                await mintAndDeposit(fixture, alice, 1, weth)
+            })
+
+            it("get the correct collateral when no debt", async () => {
+                expect(
+                    await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [
+                        weth.address,
+                        wbtc.address,
+                    ]),
+                ).to.eq(nullAddress)
+            })
+
+            it("get the correct collateral when has debt", async () => {
+                await makeAliceNonUsdCollateralLiquidatable()
+
+                expect(await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [wbtc.address])).to.eq(
+                    nullAddress,
+                )
+
+                expect(
+                    await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [
+                        weth.address,
+                        wbtc.address,
+                    ]),
+                ).to.eq(weth.address)
+            })
+        })
+
+        describe("deposit only multiple non-settlement tokens", () => {
+            beforeEach(async () => {
+                await mintAndDeposit(fixture, alice, 1, weth)
+                await mintAndDeposit(fixture, alice, 0.05, wbtc)
+            })
+
+            it("get the correct collateral when no debt", async () => {
+                expect(
+                    await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [
+                        weth.address,
+                        wbtc.address,
+                    ]),
+                ).to.eq(nullAddress)
+            })
+
+            it("get the correct collateral when has debt", async () => {
+                // alice has 1eth and 0.05btc:
+                // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8)* 0.75 = 90
+                // alice position size = 100 / 151.3733069 = 0.6606184541
+                // desired alice loss > 90
+                // (151.3733069 - v) * 0.6606184541 > 90
+                // v < 151.3733069 - 90 / 0.6606184541 = 15.1373306849
+                await makeAliceNonUsdCollateralLiquidatable("15")
+
+                it("get the correct collateral when no debt", async () => {
+                    expect(
+                        await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [wbtc.address]),
+                    ).to.eq(nullAddress)
+                })
+
+                expect(
+                    await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [
+                        weth.address,
+                        wbtc.address,
+                    ]),
+                ).to.eq(weth.address)
+            })
+        })
+    })
+
     describe("flashLiquidate", () => {
         beforeEach(async () => {
             // Alice has 1 eth and 0.05 btc:
