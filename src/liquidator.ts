@@ -20,12 +20,11 @@ export interface LiquidatorSecrets {
 // https://docs.alchemy.com/alchemy/documentation/rate-limits
 const REQUEST_CHUNK_SIZE = 25
 
-const network = +process.env.NETWORK
-
 export class Liquidator {
     contract: LiquidatorContract
     wallet: Wallet
     mutex: Mutex
+    nextNonce: number
     vault: Vault
     settlementToken: IERC20Metadata
     settlementTokenDeciamls: number
@@ -42,11 +41,12 @@ export class Liquidator {
             new ethers.providers.StaticJsonRpcProvider(process.env.RPC_URL),
         )
 
+        this.nextNonce = await this.wallet.getTransactionCount()
+        this.mutex = new Mutex()
+
         this.contract = Liquidator__factory.connect(process.env.LIQUIDATOR_CONTRACT, this.wallet)
 
         this.vault = Vault__factory.connect(this.metadata.core.contracts.Vault.address, this.wallet)
-
-        this.mutex = new Mutex()
 
         this.settlementToken = IERC20Metadata__factory.connect(this.metadata.core.externalContracts.USDC, this.wallet)
         this.settlementTokenDeciamls = await this.settlementToken.decimals()
@@ -106,7 +106,7 @@ export class Liquidator {
         }
     }
 
-    async fetchMakers(): Promise<Account[]> {
+    async fetchMakers(): Promise<string[]> {
         const createQueryFunc = (batchSize: number, lastID: string) => `
         {
             makers(first: ${batchSize}, where: {id_gt: "${lastID}"}) {
@@ -134,7 +134,7 @@ export class Liquidator {
         return await this.graphService.queryAll<any>(createQueryFunc, extractDataFunc)
     }
 
-    async fetchTraders(): Promise<Account[]> {
+    async fetchTraders(): Promise<string[]> {
         const createQueryFunc = (batchSize: number, lastID: string) => `
         {
             traders(first: ${batchSize}, where: {id_gt: "${lastID}"}) {
@@ -163,11 +163,6 @@ export class Liquidator {
     }
 
     async tryLiquidate(account: string): Promise<void> {
-        // vault.isLiqudatable()
-        // liqudiator.getMaxProfitableCollateral()
-        // static call liqudiator.flashLiquidate()
-        // liqudiator.flashLiquidate()
-
         if (!(await this.vault.isLiquidatable(account))) {
             return
         }
@@ -189,176 +184,49 @@ export class Liquidator {
             path[1] || "0x",
         ]
 
-        await this.contract.callStatic.flashLiquidate(...args)
-
-        const orderBook = this.perpService.createOrderBook(this.wallet)
-        const clearingHouse = this.perpService.createClearingHouse(this.wallet)
-        const trader = account.address
-
-        let hasCancelOrdersError = false
-
-        for (const baseToken of account.orderBaseTokens) {
-            // NOTE: If the trader has no orders in baseToken,
-            // cancelAllExcessOrders() still succeeds, but changes nothing on-chain.
-            // So gas will be wasted.
-            const orderIds = await orderBook.getOpenOrderIds(trader, baseToken)
-            if (orderIds.length == 0) {
-                continue
-            }
-
-            // simulated call
-            try {
-                await clearingHouse.callStatic.cancelAllExcessOrders(trader, baseToken)
-            } catch (err: any) {
-                hasCancelOrdersError = true
-
-                // The structure of err might be different depending on which RPC provider we use
-                const errMsg = err.message || err.reason
-                // Trader has enough free collateral, and it's expected that we cannot cancel orders
-                if (errMsg.includes("CH_NEXO")) {
-                    this.log.jinfo({
-                        event: "StopCancelAllExcessOrdersSinceFreeCollateralIsEnough",
-                        params: {
-                            trader,
-                            baseToken,
-                        },
-                    })
-                    return // no need to cancelAllExcessOrders() and liquidate() on other baseTokens
-                } else {
-                    await this.jerror({
-                        event: "CallStaticCancelAllExcessOrdersError",
-                        params: {
-                            err,
-                            trader,
-                            baseToken,
-                        },
-                    })
-                    continue // still need to cancelAllExcessOrders() on other baseTokens
-                }
-            }
-
-            // actual call
-            try {
-                await this.cancelAllExcessOrders(this.wallet, trader, baseToken)
-            } catch (err: any) {
-                hasCancelOrdersError = true
-
-                await this.jerror({
-                    event: "CancelAllExcessOrdersError",
-                    params: {
-                        err,
-                        trader,
-                        baseToken,
-                    },
-                })
-            }
+        try {
+            await this.contract.callStatic.flashLiquidate(...args)
+        } catch (e) {
+            console.warn("FlashLiquidateWillFail", {
+                account,
+                collateral: targetCollateralAddress,
+                reason: e.toString(),
+            })
+            return
         }
 
-        if (!hasCancelOrdersError) {
-            await this.simulateThenLiquidate(account)
-        }
-    }
-
-    async simulateThenLiquidate(account: Account): Promise<void> {
-        const clearingHouse = this.perpService.createClearingHouse(this.wallet)
-        const trader = account.address
-
-        // NOTE:
-        // After applying Bad Debt Attack Protection:
-        // https://github.com/perpetual-protocol/perp-lushan/pull/517
-        // https://github.com/perpetual-protocol/perp-lushan/pull/526
-        // Regular liquidators cannot liquidate positions with bad debts,
-        // only our whitelisted backstop liquidator can.
-
-        // NOTE: We don't use account.positionBaseTokens here since subgraph can only track taker positions.
-        // When it comes to liquidate, we need to liquidate the total position (taker + maker)
-        // We can also use AccountBalance.getBaseTokens()
-        const baseTokens = _.uniq(account.orderBaseTokens.concat(account.positionBaseTokens))
-        for (const baseToken of baseTokens) {
-            // simulated call
-            // use callStatic.liquidate() to get returned quote, and calculate oppositeAmountBound
-            let quote: Big
-            let isPartialClose: boolean
+        const tx = await this.mutex.runExclusive(async () => {
             try {
-                const result = await clearingHouse.callStatic["liquidate(address,address,uint256)"](
-                    trader,
-                    baseToken,
-                    PerpService.toWei(Big(0)),
-                )
-                quote = PerpService.fromWei(result.quote)
-                isPartialClose = result.isPartialClose
-            } catch (err: any) {
-                // The structure of err might be different depending on which RPC provider we use
-                const errMsg = err.message || err.reason
-                // Trader has enough account value so it's expected that we cannot liquidate
-                if (errMsg.includes("CH_EAV")) {
-                    this.log.jinfo({
-                        event: "StopLiquidateSinceAccountValueIsEnough",
-                        params: {
-                            trader,
-                            baseToken,
-                        },
-                    })
-                    return // no need to liquidate() on other baseTokens
-                } else if (errMsg.includes("CH_PSZ")) {
-                    this.log.jinfo({
-                        event: "SkipLiquidateSincePositionSizeIsZero",
-                        params: {
-                            trader,
-                            baseToken,
-                        },
-                    })
-                    continue // still need to liquidate() on other baseTokens
-                } else if (errMsg.includes("CH_CLWTISO")) {
-                    // happens when subgraph has not indexed the open order yet
-                    this.log.jinfo({
-                        event: "SkipLiquidateSinceThereIsStillOrder",
-                        params: {
-                            trader,
-                            baseToken,
-                        },
-                    })
-                    return
-                } else {
-                    await this.jerror({
-                        event: "CallStaticLiquidateError",
-                        params: {
-                            err,
-                            trader,
-                            baseToken,
-                        },
-                    })
-                    continue // still need to liquidate() on other baseTokens
-                }
-            }
-
-            // actual call
-            // partial close rate is 25%
-            if (isPartialClose) {
-                quote = quote.div(0.25)
-            }
-            const positionSize = await this.perpService.getTotalPositionSize(trader, baseToken)
-            // enable slippage protection for liquidation, set it to 5% for now
-            const slippageProtection = Big(0.05)
-            if (positionSize.gt(0)) {
-                // when liquidate a long position => we will short => should at least get quote * 0.95
-                quote = quote.mul(Big(1).sub(slippageProtection))
-            } else {
-                // when liquidate a short position => we will long => should at most spend quote * 1.05
-                quote = quote.mul(Big(1).add(slippageProtection))
-            }
-            try {
-                await this.liquidate(this.wallet, trader, baseToken, quote)
-            } catch (err: any) {
-                await this.jerror({
-                    event: "LiquidateError",
-                    params: {
-                        err,
-                        trader,
-                        baseToken,
-                    },
+                const tx = await this.contract.flashLiquidate(...args)
+                console.log("SendFlashLiquidateTxSucceeded", {
+                    account,
+                    collateral: targetCollateralAddress,
+                    txHash: tx.hash,
+                })
+                this.nextNonce++
+                return tx
+            } catch (e) {
+                console.error("SendFlashLiquidateTxFailed", {
+                    account,
+                    collateral: targetCollateralAddress,
+                    reason: e.toString(),
                 })
             }
+        })
+
+        try {
+            await tx.wait()
+            console.log("FlashLiquidateSucceeded", {
+                account,
+                collateral: targetCollateralAddress,
+                txHash: tx.hash,
+            })
+        } catch (e) {
+            console.error("FlashLiquidateFailed", {
+                account,
+                collateral: targetCollateralAddress,
+                reason: e.toString(),
+            })
         }
     }
 }
