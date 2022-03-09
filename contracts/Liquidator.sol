@@ -142,6 +142,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
 
         if (settlement > maxSettlementTokenSpent) {
             collateral = IVault(_vault).getLiquidationAmountOut(pathHead.tokenIn, maxSettlementTokenSpent);
+            settlement = maxSettlementTokenSpent;
         }
         bool zeroForOne = pathHead.tokenIn < pathHead.tokenOut;
         address pool = _getPool(pathHead.tokenIn, pathHead.tokenOut, pathHead.fee);
