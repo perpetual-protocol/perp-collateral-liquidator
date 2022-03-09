@@ -271,6 +271,14 @@ describe("Liquidator", () => {
                     ]),
                 ).to.eq(nullAddress)
             })
+
+            it("ignore non-registered collaterals", async () => {
+                expect(
+                  await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [
+                      "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+                  ]),
+                ).to.eq(nullAddress)
+            })
         })
 
         describe("deposit only settlement token", () => {
