@@ -41,12 +41,13 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
 
     address internal _vault;
     address internal _swapRouter;
+    address internal _permissivePairAddress;
 
     //
     // EXTERNAL NON-VIEW
     //
 
-    function initialize(address vaultArg, address swapRouter) external {
+    constructor(address vaultArg, address swapRouter) {
         _vault = vaultArg;
         _swapRouter = swapRouter;
 
@@ -64,6 +65,10 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         int256 amount1Delta,
         bytes calldata _data
     ) external override {
+        // check the caller is the permissivePairAddress
+        // L_NPPA: not permissive pair address
+        require(msg.sender == _permissivePairAddress, "L_NPPA");
+
         // swaps entirely within 0-liquidity regions are not supported -> 0 swap is forbidden
         // LH_F0S: forbidden 0 swap
         require((amount0Delta > 0 && amount1Delta < 0) || (amount0Delta < 0 && amount1Delta > 0), "L_F0S");
@@ -130,13 +135,14 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         int256 minSettlementTokenProfit,
         Hop memory pathHead,
         bytes memory pathTail
-    ) external {
+    ) external onlyOwner {
         (uint256 settlement, uint256 collateral) = IVault(_vault).getMaxLiquidationAmounts(trader, pathHead.tokenIn);
         // L_NL: not liquidatable
         require(settlement > 0, "L_NL");
 
         if (settlement > maxSettlementTokenSpent) {
             collateral = IVault(_vault).getLiquidationAmountOut(pathHead.tokenIn, maxSettlementTokenSpent);
+            settlement = maxSettlementTokenSpent;
         }
         bool zeroForOne = pathHead.tokenIn < pathHead.tokenOut;
         address pool = _getPool(pathHead.tokenIn, pathHead.tokenOut, pathHead.fee);
@@ -151,6 +157,11 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
                     minSettlementAmount: minSettlementAmount < 0 ? 0 : minSettlementAmount.toUint256()
                 })
             );
+
+        // set this variable to the pool address we're calling
+        _permissivePairAddress = pool;
+
+        // call the swap, which will trigger the swap callback
         IUniswapV3Pool(pool).swap(
             address(this),
             zeroForOne,
@@ -158,6 +169,9 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
             (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1),
             data
         );
+
+        // after swap, we set it back to zero
+        _permissivePairAddress = address(0);
     }
 
     /// @notice Get the most profitable collateral from the liquidatable trader
