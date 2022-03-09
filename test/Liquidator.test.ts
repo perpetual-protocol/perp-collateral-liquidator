@@ -283,17 +283,20 @@ describe("Liquidator", () => {
                 // push down the index price to v so alice loss > 90 (non-settlement value threshold)
                 // (151.3733069 - v) * 0.6606184541 > 90
                 // v < 151.3733069 - 90 / 0.6606184541 = 15.1373306849
+                // est. unrealizedPnl = (10 - 151.3733069) * 0.6606184541 = -93.3938154553
                 await makeAliceNonUsdCollateralLiquidatable("10")
             })
 
             it("profit on single-hop swap", async () => {
                 // alice:
-                // maxRepayNotional = 90.193584 * 0.5 = 45.096792
-                // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
+                // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
+                // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
                 // for ETH:
-                //   maxCollateralTokenOut = 46.4915381443 / (100 * (1 - 0.1)) = 0.516572646
-                //   maxSettlementTokenIn = 0.516572646 * (100 * (1 - 0.1)) = 46.49153814
-                //   est. profit (without slippage) = 0.516572646 * 100 - 46.49153814 = 5.16572646
+                //   maxCollateralTokenOut = 48.1411419873 / (100 * (1 - 0.1)) = 0.5349015776
+                //   maxSettlementTokenIn = 0.5349015776 * (100 * (1 - 0.1)) = 48.141141984
+                //   actualSettlementTokenIn = min(48.141141984, 100) = 48.141141984
+                //   actualCollateralTokenOut = 48.141141984 / (100 * (1 - 0.1)) = 0.5349015776
+                //   est. profit (without slippage) = 0.5349015776 * 100 - 48.141141984 = 5.349015776
                 await liquidator.flashLiquidate(
                     alice.address,
                     parseUnits("100", usdcDecimals),
@@ -309,11 +312,13 @@ describe("Liquidator", () => {
 
             it("profit on single-hop swap twice", async () => {
                 // alice:
-                // maxRepayNotional = 90.193584 * 0.5 = 45.096792
-                // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 10
+                // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
+                // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
                 // for ETH:
-                //   maxCollateralTokenOut = 1 / (100 * (1 - 0.1)) = 0.01111111111
-                //   maxSettlementTokenIn = min(0.516572646 * (100 * (1 - 0.1)), 1) = 1
+                //   maxCollateralTokenOut = 48.1411419873 / (100 * (1 - 0.1)) = 0.5349015776
+                //   maxSettlementTokenIn = 0.5349015776 * (100 * (1 - 0.1)) = 48.141141984
+                //   actualSettlementTokenIn = min(48.141141984, 1) = 1
+                //   actualCollateralTokenOut = 1 / (100 * (1 - 0.1)) = 0.01111111111
                 //   est. profit (without slippage) = 0.01111111111 * 100 - 1 = 0.111111111
                 await liquidator.flashLiquidate(
                     alice.address,
@@ -324,7 +329,17 @@ describe("Liquidator", () => {
                 )
 
                 const usdcBalance1 = await usdc.balanceOf(liquidator.address)
+                expect(usdcBalance1).to.be.gt(0)
 
+                // alice:
+                // maxRepayNotional = (93.3938154553 - 1) * 0.5 = 46.1969077277
+                // maxRepayNotionalAndIFFee = 46.1969077277 / (1 - 0.03) = 47.6256780698
+                // for ETH:
+                //   maxCollateralTokenOut = 47.6256780698 / (100 * (1 - 0.1)) = 0.5291742008
+                //   maxSettlementTokenIn = 0.5291742008 * (100 * (1 - 0.1)) = 47.625678072
+                //   actualSettlementTokenIn = min(47.625678072, 1) = 1
+                //   actualCollateralTokenOut = 1 / (100 * (1 - 0.1)) = 0.01111111111
+                //   est. profit (without slippage) = 0.01111111111 * 100 - 1 = 0.111111111
                 await liquidator.flashLiquidate(
                     alice.address,
                     parseUnits("1", usdcDecimals),
@@ -334,18 +349,18 @@ describe("Liquidator", () => {
                 )
 
                 const usdcBalance2 = await usdc.balanceOf(liquidator.address)
-
-                expect(usdcBalance2.add(usdcBalance1)).to.be.gt(0)
-                expect(usdcBalance2.toNumber()).to.be.greaterThan(usdcBalance1.toNumber())
+                expect(usdcBalance2.sub(usdcBalance1)).to.be.gt(0)
             })
 
             it("profit on multi-hop swap", async () => {
                 // alice:
-                // maxRepayNotional = 90.193584 * 0.5 = 45.096792
-                // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
+                // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
+                // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
                 // for BTC:
-                //   maxCollateralTokenOut = min(46.4915381443 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                //   maxCollateralTokenOut = min(48.1411419873 / (1000 * (1 - 0.1)), 0.05) = 0.05
                 //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
+                //   actualSettlementTokenIn = min(45, 100) = 45
+                //   actualCollateralTokenOut = 45 / (1000 * (1 - 0.1)) = 0.05
                 //   est. profit (without slippage) = 0.05 * 1000 - 45 = 5
                 await liquidator.flashLiquidate(
                     alice.address,
@@ -364,12 +379,14 @@ describe("Liquidator", () => {
 
             it("profit on multi-hop swap twice", async () => {
                 // alice:
-                // maxRepayNotional = 90.193584 * 0.5 = 45.096792
-                // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
+                // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
+                // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
                 // for BTC:
-                //   maxCollateralTokenOut = min(46.4915381443 / (1000 * (1 - 0.1)), 1 / (1000 * (1 - 0.1))) = 0.00111111111
-                //   maxSettlementTokenIn = min(0.05 * (1000 * (1 - 0.1)), 1) = 1
-                //   est. profit (without slippage) = 0.00111111111 * 1000 - 1 = 0.11111111
+                //   maxCollateralTokenOut = min(48.1411419873 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
+                //   actualSettlementTokenIn = min(45, 1) = 1
+                //   actualCollateralTokenOut = 1 / (1000 * (1 - 0.1)) = 0.001111111111
+                //   est. profit (without slippage) = 0.001111111111 * 1000 - 1 = 0.111111111
                 await liquidator.flashLiquidate(
                     alice.address,
                     parseUnits("1", usdcDecimals),
@@ -382,7 +399,17 @@ describe("Liquidator", () => {
                 )
 
                 const usdcBalance1 = await usdc.balanceOf(liquidator.address)
+                expect(usdcBalance1).to.be.gt(0)
 
+                // alice:
+                // maxRepayNotional = (93.3938154553 - 1) * 0.5 = 46.1969077277
+                // maxRepayNotionalAndIFFee = 46.1969077277 / (1 - 0.03) = 47.6256780698
+                // for BTC:
+                //   maxCollateralTokenOut = min(47.6256780698 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
+                //   actualSettlementTokenIn = min(45, 1) = 1
+                //   actualCollateralTokenOut = 1 / (1000 * (1 - 0.1)) = 0.001111111111
+                //   est. profit (without slippage) = 0.001111111111 * 1000 - 1 = 0.111111111
                 await liquidator.flashLiquidate(
                     alice.address,
                     parseUnits("1", usdcDecimals),
@@ -395,9 +422,7 @@ describe("Liquidator", () => {
                 )
 
                 const usdcBalance2 = await usdc.balanceOf(liquidator.address)
-
-                expect(usdcBalance1.add(usdcBalance2)).to.be.gt(0)
-                expect(usdcBalance2.toNumber()).to.be.greaterThan(usdcBalance1.toNumber())
+                expect(usdcBalance2.sub(usdcBalance1)).to.be.gt(0)
             })
 
             describe("non-profitable swap", () => {
