@@ -242,8 +242,7 @@ export function createFixture(): () => Promise<Fixture> {
         //
 
         const liquidatorFactory = await ethers.getContractFactory("Liquidator")
-        const liquidator = (await liquidatorFactory.deploy()) as Liquidator
-        await liquidator.initialize(vault.address, uniV3Router.address)
+        const liquidator = (await liquidatorFactory.deploy(vault.address, uniV3Router.address)) as Liquidator
 
         return {
             USDC,

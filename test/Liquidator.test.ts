@@ -194,6 +194,12 @@ describe("Liquidator", () => {
         await syncIndexToMarketPrice(mockedBaseAggregator, pool)
     })
 
+    describe("constructor", () => {
+        it("owns by the deployer", async () => {
+            expect(await liquidator.owner()).to.eq(admin.address)
+        })
+    })
+
     describe("getMaxProfitableCollateral", () => {
         describe("no collaterals", () => {
             it("get the correct collateral", async () => {
@@ -254,6 +260,12 @@ describe("Liquidator", () => {
         })
     })
 
+    describe("uniswapV3SwapCallback", () => {
+        it("force error, called by non-authorized attacker for the first time", async () => {
+            await expect(liquidator.connect(davis).uniswapV3SwapCallback(0, 0, "0x")).to.revertedWith("L_NPPA")
+        })
+    })
+
     describe("flashLiquidate", () => {
         beforeEach(async () => {
             // Alice has 1 eth and 0.05 btc:
@@ -285,6 +297,28 @@ describe("Liquidator", () => {
                 await liquidator.flashLiquidate(
                     alice.address,
                     parseUnits("100", usdcDecimals),
+                    parseUnits("1", usdcDecimals),
+                    { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
+                    "0x",
+                )
+
+                const usdcBalance = await usdc.balanceOf(liquidator.address)
+
+                expect(usdcBalance).to.be.gt(0)
+            })
+
+            // TODO WIP
+            it("profit on single-hop swap twice", async () => {
+                // alice:
+                // maxRepayNotional = 90.193584 * 0.5 = 45.096792
+                // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
+                // for ETH:
+                //   maxCollateralTokenOut = 46.4915381443 / (100 * (1 - 0.1)) = 0.516572646
+                //   maxSettlementTokenIn = 0.516572646 * (100 * (1 - 0.1)) = 46.49153814
+                //   est. profit (without slippage) = 0.516572646 * 100 - 46.49153814 = 5.16572646
+                await liquidator.flashLiquidate(
+                    alice.address,
+                    parseUnits("50", usdcDecimals),
                     parseUnits("1", usdcDecimals),
                     { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
                     "0x",
@@ -438,6 +472,20 @@ describe("Liquidator", () => {
                     ),
                 ).to.be.revertedWith("L_NL")
             })
+        })
+
+        it("force error, not owner", async () => {
+            await expect(
+                liquidator
+                    .connect(davis)
+                    .flashLiquidate(
+                        alice.address,
+                        parseUnits("100", usdcDecimals),
+                        parseUnits("0", usdcDecimals),
+                        { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
+                        "0x",
+                    ),
+            ).to.be.revertedWith("Ownable: caller is not the owner")
         })
     })
 
