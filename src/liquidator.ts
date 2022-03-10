@@ -7,12 +7,20 @@ import { Liquidator as LiquidatorContract, Liquidator__factory } from "../typech
 import { Vault, Vault__factory } from "../typechain/perp-curie"
 import { IERC20Metadata__factory } from "../typechain/perp-curie/factories/IERC20Metadata__factory"
 import { IERC20Metadata } from "../typechain/perp-curie/IERC20Metadata"
-import config from "./config"
-import allMetadata, { Hop } from "./metadata"
+import { Hop, optitmismEthereum } from "./metadata"
 import { sleep } from "./utils"
 
 interface GraphData {
     id: string
+}
+
+export type Config = {
+    subgraphEndPt: string
+    wallet: Wallet
+    liquidatorContractAddr: string
+    maxSettlementTokenSpent: string
+    minSettlementTokenProfit: string
+    pathMap: typeof optitmismEthereum
 }
 
 // Alchemy's current rate limit is 660 CU per second, and an eth_call takes 26 CU
@@ -21,6 +29,7 @@ interface GraphData {
 const REQUEST_CHUNK_SIZE = 25
 
 export class Liquidator {
+    config: Config
     subgraphEndpoint: string
     contract: LiquidatorContract
     wallet: Wallet
@@ -29,29 +38,30 @@ export class Liquidator {
     vault: Vault
     settlementToken: IERC20Metadata
     settlementTokenDeciamls: number
-    metadata: typeof allMetadata[10]
+    pathMap: typeof optitmismEthereum
 
-    async setup(): Promise<void> {
+    async setup(config: Config): Promise<void> {
         console.log({
             event: "SetupLiquidator",
+            params: { config },
         })
 
-        this.subgraphEndpoint = process.env.SUBGRAPH_ENDPT
+        this.config = config
 
-        this.metadata = allMetadata[+process.env.NETWORK]
+        this.subgraphEndpoint = this.config.subgraphEndPt
 
-        this.wallet = new Wallet(process.env.LIQUIDATOR_KEY).connect(
-            new ethers.providers.StaticJsonRpcProvider(process.env.WEB3_ENDPT),
-        )
+        this.pathMap = this.config.pathMap
+
+        this.wallet = this.config.wallet
 
         this.nextNonce = await this.wallet.getTransactionCount()
         this.mutex = new Mutex()
 
-        this.contract = Liquidator__factory.connect(process.env.LIQUIDATOR_CONTRACT, this.wallet)
+        this.contract = Liquidator__factory.connect(this.config.liquidatorContractAddr, this.wallet)
 
-        this.vault = Vault__factory.connect(this.metadata.core.contracts.Vault.address, this.wallet)
+        this.vault = Vault__factory.connect(await this.contract.getVault(), this.wallet)
 
-        this.settlementToken = IERC20Metadata__factory.connect(this.metadata.core.externalContracts.USDC, this.wallet)
+        this.settlementToken = IERC20Metadata__factory.connect(await this.vault.getSettlementToken(), this.wallet)
         this.settlementTokenDeciamls = await this.settlementToken.decimals()
 
         console.log({
@@ -176,10 +186,15 @@ export class Liquidator {
 
         const targetCollateralAddress = await this.contract.getMaxProfitableCollateralFromCollaterals(
             account,
-            Object.keys(this.metadata.pathMap),
+            Object.keys(this.pathMap),
         )
 
-        const path = this.metadata.pathMap[targetCollateralAddress]
+        if (targetCollateralAddress === "0x0000000000000000000000000000000000000000") {
+            console.info({ event: "NoProfitableCollateralInPathMap", params: { collateral: targetCollateralAddress } })
+            return
+        }
+
+        const path = this.pathMap[targetCollateralAddress]
 
         if (!path) {
             console.warn({ event: "UnknownCollateral", params: { collateral: targetCollateralAddress } })
@@ -188,19 +203,22 @@ export class Liquidator {
 
         const args: [string, ethers.BigNumberish, ethers.BigNumberish, Hop, ethers.BytesLike] = [
             account,
-            ethers.utils.formatUnits(config.maxSettlementTokenSpent, this.settlementTokenDeciamls),
-            ethers.utils.formatUnits(config.minSettlementTokenProfit, this.settlementTokenDeciamls),
-            path[0],
-            path[1] || "0x",
+            ethers.utils.parseUnits(this.config.maxSettlementTokenSpent, this.settlementTokenDeciamls),
+            ethers.utils.parseUnits(this.config.minSettlementTokenProfit, this.settlementTokenDeciamls),
+            path.head,
+            path.tail,
         ]
 
         try {
             await this.contract.callStatic.flashLiquidate(...args)
         } catch (e) {
-            console.warn("FlashLiquidateWillFail", {
-                account,
-                collateral: targetCollateralAddress,
-                reason: e.toString(),
+            console.warn({
+                event: "FlashLiquidateWillFail",
+                params: {
+                    account,
+                    collateral: targetCollateralAddress,
+                    reason: e.toString(),
+                },
             })
             return
         }
@@ -208,34 +226,46 @@ export class Liquidator {
         const tx = await this.mutex.runExclusive(async () => {
             try {
                 const tx = await this.contract.flashLiquidate(...args)
-                console.log("SendFlashLiquidateTxSucceeded", {
-                    account,
-                    collateral: targetCollateralAddress,
-                    txHash: tx.hash,
+                console.log({
+                    event: "SendFlashLiquidateTxSucceeded",
+                    params: {
+                        account,
+                        collateral: targetCollateralAddress,
+                        txHash: tx.hash,
+                    },
                 })
                 this.nextNonce++
                 return tx
             } catch (e) {
-                console.error("SendFlashLiquidateTxFailed", {
-                    account,
-                    collateral: targetCollateralAddress,
-                    reason: e.toString(),
+                console.error({
+                    event: "SendFlashLiquidateTxFailed",
+                    params: {
+                        account,
+                        collateral: targetCollateralAddress,
+                        reason: e.toString(),
+                    },
                 })
             }
         })
 
         try {
             await tx.wait()
-            console.log("FlashLiquidateSucceeded", {
-                account,
-                collateral: targetCollateralAddress,
-                txHash: tx.hash,
+            console.log({
+                event: "FlashLiquidateSucceeded",
+                params: {
+                    account,
+                    collateral: targetCollateralAddress,
+                    txHash: tx.hash,
+                },
             })
         } catch (e) {
-            console.error("FlashLiquidateFailed", {
-                account,
-                collateral: targetCollateralAddress,
-                reason: e.toString(),
+            console.error({
+                event: "FlashLiquidateFailed",
+                params: {
+                    account,
+                    collateral: targetCollateralAddress,
+                    reason: e.toString(),
+                },
             })
         }
     }

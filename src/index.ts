@@ -1,4 +1,7 @@
+import { ethers, Wallet } from "ethers"
 import { Liquidator } from "./liquidator"
+import allMetadata from "./metadata"
+require("dotenv").config({ path: `.env.${process.env.ENV}` })
 
 async function main(): Promise<void> {
     // crash fast on uncaught errors
@@ -15,7 +18,16 @@ async function main(): Promise<void> {
     process.on("unhandledRejection", reason => exitUncaughtError(reason))
 
     const liquidator = new Liquidator()
-    await liquidator.setup()
+    await liquidator.setup({
+        subgraphEndPt: process.env.SUBGRAPH_ENDPT,
+        wallet: new Wallet(process.env.LIQUIDATOR_PK).connect(
+            new ethers.providers.StaticJsonRpcProvider(process.env.WEB3_ENDPT),
+        ),
+        liquidatorContractAddr: process.env.LIQUIDATOR_CONTRACT,
+        maxSettlementTokenSpent: process.env.MAX_SETTLEMENT_TOKEN_SPENT,
+        minSettlementTokenProfit: process.env.MIN_SETTLEMENT_TOKEN_PROFIT,
+        pathMap: allMetadata[process.env.NETWORK],
+    })
     await liquidator.start()
 }
 

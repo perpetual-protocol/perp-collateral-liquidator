@@ -3,6 +3,7 @@ import { expect } from "chai"
 import { BigNumber, BigNumberish, Wallet } from "ethers"
 import { parseEther, parseUnits } from "ethers/lib/utils"
 import { ethers, waffle } from "hardhat"
+import { Liquidator as LiquidatorApp } from "../src/liquidator"
 import { Liquidator, TestUniswapV3Callee } from "../typechain"
 import { AccountBalance, BaseToken, ClearingHouse, Exchange, MarketRegistry, Vault } from "../typechain/perp-curie"
 import { TestERC20 } from "../typechain/test"
@@ -274,9 +275,9 @@ describe("Liquidator", () => {
 
             it("ignore non-registered collaterals", async () => {
                 expect(
-                  await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [
-                      "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-                  ]),
+                    await liquidator.getMaxProfitableCollateralFromCollaterals(alice.address, [
+                        "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+                    ]),
                 ).to.eq(nullAddress)
             })
         })
@@ -692,6 +693,116 @@ describe("Liquidator", () => {
             await expect(liquidator.connect(alice).withdraw(usdc.address)).revertedWith(
                 "Ownable: caller is not the owner",
             )
+        })
+    })
+
+    describe("app", () => {
+        let liquidatorApp: LiquidatorApp
+
+        beforeEach(async () => {
+            // Alice has 1 eth and 0.05 btc:
+            // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8) * 0.75 = 90
+            await mintAndDeposit(fixture, alice, 1, weth)
+            await mintAndDeposit(fixture, alice, 0.05, wbtc)
+
+            // prepare to manipulate the spot price
+            await weth.mint(carol.address, parseEther("1000"))
+        })
+
+        describe("correct config", () => {
+            beforeEach(async () => {
+                // initialize liquidator app
+                liquidatorApp = new LiquidatorApp()
+                await liquidatorApp.setup({
+                    subgraphEndPt: "",
+                    wallet: admin,
+                    liquidatorContractAddr: liquidator.address,
+                    maxSettlementTokenSpent: "100",
+                    minSettlementTokenProfit: "1",
+                    pathMap: {
+                        [wbtc.address]: {
+                            head: {
+                                tokenIn: wbtc.address,
+                                fee: "10000",
+                                tokenOut: weth.address,
+                            },
+                            tail: ethers.utils.solidityPack(
+                                ["address", "uint24", "address"],
+                                [weth.address, "10000", usdc.address],
+                            ),
+                        },
+                        [weth.address]: {
+                            head: {
+                                tokenIn: weth.address,
+                                fee: "10000",
+                                tokenOut: usdc.address,
+                            },
+                            tail: "0x",
+                        },
+                    },
+                })
+            })
+
+            describe("trader collateral is liquidatable", () => {
+                beforeEach(async () => {
+                    // alice position size = 100 / 151.3733069 = 0.6606184541
+                    // push down the index price to v so alice loss > 90 (non-settlement value threshold)
+                    // (151.3733069 - v) * 0.6606184541 > 90
+                    // v < 151.3733069 - 90 / 0.6606184541 = 15.1373306849
+                    // est. unrealizedPnl = (10 - 151.3733069) * 0.6606184541 = -93.3938154553
+                    await makeAliceNonUsdCollateralLiquidatable("10")
+                })
+
+                it("liquidate", async () => {
+                    await liquidatorApp.tryLiquidate(alice.address)
+
+                    const usdcBalance = await usdc.balanceOf(liquidator.address)
+                    expect(usdcBalance).to.be.gt(0)
+                })
+            })
+
+            describe("trader collateral is not liquidatable", () => {
+                it("does not liquidate", async () => {
+                    const blockNumber = await waffle.provider.getBlockNumber()
+                    // suppose to pass without any exception
+                    await liquidatorApp.tryLiquidate(alice.address)
+                    expect(await waffle.provider.getBlockNumber()).to.be.eq(blockNumber)
+                })
+            })
+        })
+
+        describe("incorrect config", () => {
+            beforeEach(async () => {
+                // initialize liquidator app
+                liquidatorApp = new LiquidatorApp()
+                await liquidatorApp.setup({
+                    subgraphEndPt: "",
+                    wallet: admin,
+                    liquidatorContractAddr: liquidator.address,
+                    maxSettlementTokenSpent: "100",
+                    minSettlementTokenProfit: "1",
+                    pathMap: {
+                        // deliberately set to a unknown token
+                        "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef": {
+                            head: {
+                                tokenIn: "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+                                fee: "10000",
+                                tokenOut: usdc.address,
+                            },
+                            tail: "0x",
+                        },
+                    },
+                })
+            })
+
+            it("does not liquidate", async () => {
+                await makeAliceNonUsdCollateralLiquidatable("10")
+
+                const blockNumber = await waffle.provider.getBlockNumber()
+                // suppose to pass without any exception
+                await liquidatorApp.tryLiquidate(alice.address)
+                expect(await waffle.provider.getBlockNumber()).to.be.eq(blockNumber)
+            })
         })
     })
 })
