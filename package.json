@@ -25,7 +25,8 @@
     "async-mutex": "^0.3.2",
     "big.js": "6.1.1",
     "ethers": "5.5.2",
-    "lodash": "4.17.21"
+    "lodash": "4.17.21",
+    "node-fetch": "2.6.7"
   },
   "devDependencies": {
     "@eth-optimism/smock": "1.1.4",
@@ -49,6 +50,7 @@
     "@types/lodash": "4.14.170",
     "@types/mocha": "9.0.0",
     "@types/node": "15.6.1",
+    "@types/node-fetch": "2.5.12",
     "@uniswap/v3-core": "1.0.0",
     "@uniswap/v3-periphery": "1.0.1",
     "bignumber.js": "9.0.1",

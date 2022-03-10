@@ -1,6 +1,11 @@
 {
     "compilerOptions": {
         "resolveJsonModule": true,
-        "esModuleInterop": true
-    }
+        "esModuleInterop": true,
+        "outDir": "./build",
+        "sourceMap": true
+    },
+    "include": [
+        "./src/**/*.ts"
+    ]
 }
