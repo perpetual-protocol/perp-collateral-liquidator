@@ -1,9 +1,8 @@
 import { DeployFunction } from "hardhat-deploy/types"
-import { HardhatRuntimeEnvironment } from "hardhat/types"
 import mainMetadataOptimismKovan from "../src/optimism-kovan.json"
 import mainMetadataOptimism from "../src/optimism.json"
 
-const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
+const func: DeployFunction = async function (hre: any) {
     const { deployments, getNamedAccounts } = hre
     const { deploy } = deployments
 
