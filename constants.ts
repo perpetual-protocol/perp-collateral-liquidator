@@ -1,4 +1,7 @@
+require("dotenv").config({ path: `.env.build` })
+
 import _ from "lodash"
+
 export const OPTIMISM_KOVAN_WEB3_ENDPOINT = _.defaultTo(process.env["OPTIMISM_KOVAN_WEB3_ENDPOINT"], "")
 export const OPTIMISM_KOVAN_DEPLOYER_MNEMONIC = _.defaultTo(process.env["OPTIMISM_KOVAN_DEPLOYER_MNEMONIC"], "")
 export const OPTIMISM_WEB3_ENDPOINT = _.defaultTo(process.env["OPTIMISM_WEB3_ENDPOINT"], "")

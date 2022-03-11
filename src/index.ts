@@ -1,7 +1,7 @@
 import { ethers, Wallet } from "ethers"
 import { Liquidator } from "./liquidator"
 import allMetadata from "./metadata"
-require("dotenv").config({ path: `.env.${process.env.ENV}` })
+require("dotenv").config({ path: `.env.runtime.${process.env.ENV}` })
 
 async function main(): Promise<void> {
     // crash fast on uncaught errors

@@ -35,3 +35,35 @@ To run all the test cases:
 ```bash
 npm run test
 ```
+
+### Deploy Contract
+
+Prerequisite:
+1. duplicate `.env.build.example`
+2. rename it to `.env.build`
+3. fill all of the fields
+
+To deploy the contract:
+
+```bash
+# to Optimism Kovan (testnet)
+npm run deploy-contract-optimism-kovan
+
+# to Optimism (mainnet)
+npm run deploy-contract-optimism
+```
+
+### Run App
+
+Prerequisite:
+1. duplicate `.env.runtime.example`
+2. rename it to `.env.runtime.optimism` (or `.env.runtime.optimism-kovan` for testnet)
+3. fill all of the fields
+
+```bash
+# on Optimism Kovan (testnet)
+npm run app:optimism-kovan
+
+# on Optimism (mainnet)
+npm run app:optimism
+```
