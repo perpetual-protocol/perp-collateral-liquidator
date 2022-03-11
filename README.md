@@ -12,7 +12,9 @@ Clone this repository, install NodeJS dependencies, and build the source code:
 
 ```bash
 git clone git@github.com:perpetual-protocol/perp-collateral-liquidator.git
-npm i
+# hardhat-deploy-ethers@0.3.0-beta.11 needs --legacy-peer-deps
+# otherwise there would be conflicting peer dependencies during installation
+npm i --legacy-peer-deps
 npm run build
 ```
 

@@ -15,8 +15,9 @@ import { TickMath } from "@uniswap/v3-core/contracts/libraries/TickMath.sol";
 import { IPeripheryImmutableState } from "@uniswap/v3-periphery/contracts/interfaces/IPeripheryImmutableState.sol";
 import { ISwapRouter } from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import { PoolAddress } from "@uniswap/v3-periphery/contracts/libraries/PoolAddress.sol";
-// import { Collateral } from "@perp/curie-contract/contracts/lib/Collateral.sol";
 import { IVault } from "@perp/curie-contract/contracts/interface/IVault.sol";
+// TODO: use @perp/curie-contract once ICollateralManager is released
+import { ICollateralManager } from "./ICollateralManager.sol";
 
 contract Liquidator is IUniswapV3SwapCallback, Ownable {
     using SafeMath for uint256;
@@ -174,6 +175,10 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         _permissivePairAddress = address(0);
     }
 
+    //
+    // EXETERNAL VIEW
+    //
+
     /// @notice Get the most profitable collateral from the liquidatable trader
     /// @param trader The address of the liquidatable trader
     /// @return targetCollateral The most profitable collateral from the liquidatable trader
@@ -189,6 +194,35 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
                 targetCollateral = collaterals[i];
             }
         }
+    }
+
+    /// @notice Get the most profitable collateral from the liquidatable trader and only accept specific collaterals
+    /// @param trader The address of the liquidatable trader
+    /// @param collateralList Specific collateral list
+    /// @return targetCollateral The most profitable collateral from the liquidatable trader
+    function getMaxProfitableCollateralFromCollaterals(address trader, address[] memory collateralList)
+        external
+        view
+        returns (address targetCollateral)
+    {
+        uint256 collateralLength = collateralList.length;
+        uint256 maxValue = 0;
+        targetCollateral = address(0x0);
+        for (uint256 i = 0; i < collateralLength; i++) {
+            if (!ICollateralManager(IVault(_vault).getCollateralManager()).isCollateral(collateralList[i])) {
+                // skip the collateral if not registered
+                continue;
+            }
+            (uint256 value, ) = IVault(_vault).getMaxLiquidationAmounts(trader, collateralList[i]);
+            if (value > maxValue) {
+                maxValue = value;
+                targetCollateral = collateralList[i];
+            }
+        }
+    }
+
+    function getVault() external view returns (address) {
+        return _vault;
     }
 
     //
