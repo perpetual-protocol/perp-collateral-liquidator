@@ -42,7 +42,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
 
     address internal _vault;
     address internal _swapRouter;
-    address internal _permissivePairAddress;
+    address internal _permissivePairAddress = address(1);
 
     //
     // EXTERNAL NON-VIEW
@@ -172,7 +172,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         );
 
         // after swap, we set it back to zero
-        _permissivePairAddress = address(0);
+        _permissivePairAddress = address(1);
     }
 
     //
