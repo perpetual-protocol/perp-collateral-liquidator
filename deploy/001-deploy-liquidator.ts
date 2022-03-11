@@ -10,10 +10,6 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     const { deployer } = await getNamedAccounts()
     const metadata = +process.env.NETWORK === 10 ? mainMetadataOptimism : mainMetadataOptimismKovan
 
-    console.log(`network: ${+process.env.NETWORK}`)
-    console.log(`deployer: ${deployer}`)
-    console.log(`balance: ${await hre.ethers.provider.getBalance(deployer)}`)
-
     await deploy("Liquidator", {
         from: deployer,
         args: [metadata.contracts.Vault.address, metadata.externalContracts.UniswapV3SwapRouter],
