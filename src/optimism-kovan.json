@@ -182,7 +182,8 @@
     "USDC": "0x3e22e37Cb472c872B5dE121134cFD1B57Ef06560",
     "WETH": "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
     "WBTC": "0x1234567812345678123456781234567812345678",
-    "UniswapV3Factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+    "UniswapV3Factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+    "UniswapV3SwapRouter": "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45"
   },
   "network": "optimism-kovan",
   "pools": [

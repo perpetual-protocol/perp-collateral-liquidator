@@ -12,5 +12,6 @@ slither
 contracts/hardhat-dependency-compiler/*
 .openzeppelin/unknown-31337.json
 .env*
-!.env.example
+!.env.build.example
+!.env.runtime.example
 /build
