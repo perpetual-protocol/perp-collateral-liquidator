@@ -44,7 +44,7 @@
     "@nomiclabs/hardhat-waffle": "2.0.1",
     "@openzeppelin/contracts": "3.4.0",
     "@perp/curie-contract": "github:perpetual-protocol/perp-lushan#feature/multi-collateral-with-artifacts",
-    "@perp/curie-deployments": "2022.3.7-1646642567170",
+    "@perp/curie-deployments": "2022.3.29-1648524930043",
     "@perp/perp-oracle-contract": "0.2.2",
     "@typechain/ethers-v5": "7.0.0",
     "@typechain/hardhat": "2.0.1",
