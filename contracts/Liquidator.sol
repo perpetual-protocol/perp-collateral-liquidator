@@ -16,8 +16,7 @@ import { IPeripheryImmutableState } from "@uniswap/v3-periphery/contracts/interf
 import { ISwapRouter } from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import { PoolAddress } from "@uniswap/v3-periphery/contracts/libraries/PoolAddress.sol";
 import { IVault } from "@perp/curie-contract/contracts/interface/IVault.sol";
-// TODO: use @perp/curie-contract once ICollateralManager is released
-import { ICollateralManager } from "./ICollateralManager.sol";
+import { ICollateralManager } from "@perp/curie-contract/contracts/interface/ICollateralManager.sol";
 
 contract Liquidator is IUniswapV3SwapCallback, Ownable {
     using SafeMath for uint256;
@@ -112,7 +111,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
             require(firstHopOutAmount >= data.minSettlementAmount, "L_LTMSTP");
         }
 
-        IVault(_vault).liquidateCollateralExactOutput(data.trader, data.baseToken, collateralAmount);
+        IVault(_vault).liquidateCollateral(data.trader, data.baseToken, collateralAmount, false);
 
         // transfer the collateral to uniswap pool
         IERC20(collateralToken).safeTransfer(data.pool, collateralAmount);

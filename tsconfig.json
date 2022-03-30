@@ -6,6 +6,8 @@
         "sourceMap": true
     },
     "include": [
-        "./src/**/*.ts"
-    ]
+        "./src/**/*.ts",
+        "./test/**/*.ts"
+    ],
+    "files": ["./hardhat.config.ts"]
 }

@@ -172,6 +172,8 @@ export function createFixture(): () => Promise<Fixture> {
         const collateralManagerFactory = await ethers.getContractFactory("CollateralManager")
         const collateralManager = (await collateralManagerFactory.deploy()) as CollateralManager
         await collateralManager.initialize(
+            clearingHouseConfig.address,
+            vault.address,
             5, // maxCollateralTokensPerAccount
             "750000", // debtNonSettlementTokenValueRatio
             "500000", // liquidationRatio
