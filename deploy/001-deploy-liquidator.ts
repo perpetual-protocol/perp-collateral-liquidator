@@ -17,5 +17,17 @@ const func: DeployFunction = async function (hre: any) {
         log: true,
         autoMine: true, // speed up deployment on local network (ganache, hardhat), no effect on live networks
     })
+
+    // NOTE: if you'd like to transfer owner to another account, please comment out below code block
+    //       import { ethers } from "hardhat"
+    //       import { Liquidator } from "../typechain"
+    //
+    // const newOwner = ""
+    // const deployment = await deployments.get("Liquidator")
+    // const liquidatorFactory = await ethers.getContractFactory("Liquidator")
+    // const liquidator = liquidatorFactory.attach(deployment.address) as Liquidator
+    // const result = await liquidator.transferOwnership(newOwner)
+    // console.log(`Owner transferred to ${newOwner}`)
 }
+
 export default func

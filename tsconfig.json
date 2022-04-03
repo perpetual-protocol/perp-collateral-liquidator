@@ -3,11 +3,13 @@
         "resolveJsonModule": true,
         "esModuleInterop": true,
         "outDir": "./build",
+        
         "sourceMap": true
     },
     "include": [
-        "./src/**/*.ts",
-        "./test/**/*.ts"
+        "./src",
+        "./test",
+        "./deploy"
     ],
     "files": ["./hardhat.config.ts"]
 }
