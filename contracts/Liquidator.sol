@@ -136,12 +136,16 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         Hop memory pathHead,
         bytes memory pathTail
     ) external onlyOwner {
-        (uint256 settlement, uint256 collateral) = IVault(_vault).getMaxLiquidationAmounts(trader, pathHead.tokenIn);
+        (uint256 settlement, uint256 collateral) =
+            IVault(_vault).getMaxRepaidSettlementAndLiquidatableCollateral(trader, pathHead.tokenIn);
         // L_NL: not liquidatable
         require(settlement > 0, "L_NL");
 
         if (settlement > maxSettlementTokenSpent) {
-            collateral = IVault(_vault).getLiquidationAmountOut(pathHead.tokenIn, maxSettlementTokenSpent);
+            collateral = IVault(_vault).getLiquidatableCollateralBySettlement(
+                pathHead.tokenIn,
+                maxSettlementTokenSpent
+            );
             settlement = maxSettlementTokenSpent;
         }
         bool zeroForOne = pathHead.tokenIn < pathHead.tokenOut;
@@ -187,7 +191,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         uint256 maxValue = 0;
         targetCollateral = address(0x0);
         for (uint256 i = 0; i < collateralLength; i++) {
-            (uint256 value, ) = IVault(_vault).getMaxLiquidationAmounts(trader, collaterals[i]);
+            (uint256 value, ) = IVault(_vault).getMaxRepaidSettlementAndLiquidatableCollateral(trader, collaterals[i]);
             if (value > maxValue) {
                 maxValue = value;
                 targetCollateral = collaterals[i];
@@ -212,7 +216,8 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
                 // skip the collateral if not registered
                 continue;
             }
-            (uint256 value, ) = IVault(_vault).getMaxLiquidationAmounts(trader, collateralList[i]);
+            (uint256 value, ) =
+                IVault(_vault).getMaxRepaidSettlementAndLiquidatableCollateral(trader, collateralList[i]);
             if (value > maxValue) {
                 maxValue = value;
                 targetCollateral = collateralList[i];
