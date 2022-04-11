@@ -77,7 +77,7 @@ export class Liquidator {
             params: {
                 address: this.contract.address,
                 usdcBalance: ethers.utils.formatUnits(
-                    await this.settlementToken.balanceOf(this.wallet.address),
+                    await this.settlementToken.balanceOf(this.contract.address),
                     await this.settlementToken.decimals(),
                 ),
             },
