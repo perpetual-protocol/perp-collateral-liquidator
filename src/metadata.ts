@@ -1,5 +1,5 @@
 // import mainMetadataOptimism from "@perp/curie-deployments/optimism/core/metadata.json"
-import mainMetadataOptimismKovan from "@perp/curie-deployments/optimism-kovan-dev1/core/metadata.json"
+import mainMetadataOptimismKovan from "@perp/curie-deployments/optimism-kovan/core/metadata.json"
 import { ethers } from "ethers"
 
 export type Hop = {
@@ -36,24 +36,24 @@ export const optitmismEthereum = {
 }
 
 const optimismKovan = {
-    [mainMetadataOptimismKovan.externalContracts.WBTC]: {
+    [mainMetadataOptimismKovan.externalContracts.TestWBTC]: {
         head: {
-            tokenIn: mainMetadataOptimismKovan.externalContracts.WBTC,
+            tokenIn: mainMetadataOptimismKovan.externalContracts.TestWBTC,
             fee: "3000",
-            tokenOut: mainMetadataOptimismKovan.externalContracts.USDT,
+            tokenOut: mainMetadataOptimismKovan.externalContracts.TestUSDT,
         },
         tail: ethers.utils.solidityPack(
             ["address", "uint24", "address"],
             [
-                mainMetadataOptimismKovan.externalContracts.USDT,
+                mainMetadataOptimismKovan.externalContracts.TestUSDT,
                 "3000",
                 mainMetadataOptimismKovan.externalContracts.USDC,
             ],
         ),
     },
-    [mainMetadataOptimismKovan.externalContracts.USDT]: {
+    [mainMetadataOptimismKovan.externalContracts.TestUSDT]: {
         head: {
-            tokenIn: mainMetadataOptimismKovan.externalContracts.USDT,
+            tokenIn: mainMetadataOptimismKovan.externalContracts.TestUSDT,
             fee: "3000",
             tokenOut: mainMetadataOptimismKovan.externalContracts.USDC,
         },
