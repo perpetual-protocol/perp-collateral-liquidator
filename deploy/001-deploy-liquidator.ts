@@ -19,7 +19,7 @@ const func: DeployFunction = async function (hre: any) {
     })
 
     // NOTE: if you'd like to transfer owner to another account, please comment out below code block
-    //       import { Liquidator } from "../typechain"
+    //   import { Liquidator } from "../typechain"
 
     // const { ethers } = hre
     // const newOwner = ""
