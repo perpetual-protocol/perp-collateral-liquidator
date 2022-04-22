@@ -15,11 +15,4 @@ contracts/hardhat-dependency-compiler/*
 !.env.runtime.example
 /build
 /deployments
-
-# Exclude liquidator artifact
-/artifacts/*
-!/artifacts/contracts
-/artifacts/contracts/*
-!/artifacts/contracts/Liquidator.sol
-/artifacts/contracts/Liquidator.sol/*
-!/artifacts/contracts/Liquidator.sol/Liquidator.json
+/artifacts
