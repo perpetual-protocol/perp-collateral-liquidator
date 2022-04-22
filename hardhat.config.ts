@@ -83,7 +83,7 @@ const config: HardhatUserConfig = {
                 artifacts: "node_modules/@perp/perp-oracle-contract/artifacts/contracts",
             },
             {
-                artifacts: "node_modules/@perp/curie-contract/artifacts/contracts",
+                artifacts: "node_modules/@perp/curie-deployments/optimism-kovan/core/artifacts/contracts",
             },
             {
                 artifacts: "test/artifacts",
