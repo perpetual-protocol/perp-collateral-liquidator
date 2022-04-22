@@ -1,7 +1,5 @@
-import {
-    default as mainMetadataOptimism,
-    default as mainMetadataOptimismKovan,
-} from "@perp/curie-deployments/optimism-kovan/core/metadata.json"
+import mainMetadataOptimismKovan from "@perp/curie-deployments/optimism-kovan/core/metadata.json"
+import mainMetadataOptimism from "@perp/curie-deployments/optimism/core/metadata.json"
 import { DeployFunction } from "hardhat-deploy/types"
 
 const uniswapV3SwapRouterAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564"
