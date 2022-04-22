@@ -1,5 +1,7 @@
-import mainMetadataOptimismKovan from "@perp/curie-deployments/optimism-kovan-dev1/core/metadata.json"
-import mainMetadataOptimism from "@perp/curie-deployments/optimism-kovan/core/metadata.json"
+import {
+    default as mainMetadataOptimism,
+    default as mainMetadataOptimismKovan,
+} from "@perp/curie-deployments/optimism-kovan/core/metadata.json"
 import { DeployFunction } from "hardhat-deploy/types"
 
 const uniswapV3SwapRouterAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564"
@@ -19,9 +21,9 @@ const func: DeployFunction = async function (hre: any) {
     })
 
     // NOTE: if you'd like to transfer owner to another account, please comment out below code block
-    //       import { ethers } from "hardhat"
     //       import { Liquidator } from "../typechain"
-    //
+
+    // const { ethers } = hre
     // const newOwner = ""
     // const deployment = await deployments.get("Liquidator")
     // const liquidatorFactory = await ethers.getContractFactory("Liquidator")
