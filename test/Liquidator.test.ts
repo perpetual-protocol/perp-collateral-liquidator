@@ -4,7 +4,7 @@ import { BigNumber, BigNumberish, Wallet } from "ethers"
 import { parseEther, parseUnits } from "ethers/lib/utils"
 import { ethers, waffle } from "hardhat"
 import { Liquidator as LiquidatorApp } from "../src/liquidator"
-import { Liquidator, TestUniswapV3Callee } from "../typechain"
+import { FactorySidechains, Liquidator, Plain4Basic, TestUniswapV3Callee } from "../typechain"
 import {
     AccountBalance,
     BaseToken,
@@ -40,12 +40,17 @@ describe("Liquidator", () => {
     let usdc: TestERC20
     let weth: TestERC20
     let wbtc: TestERC20
+    let UST: TestERC20
+    let FRAX: TestERC20
+    let USDT: TestERC20
     let usdcDecimals: number
     let wethDecimals: number
     let wbtcDecimals: number
     let poolWethUsdc: UniswapV3Pool
     let poolWbtcWeth: UniswapV3Pool
     let uniV3Callee: TestUniswapV3Callee
+    let plain4Basic: Plain4Basic
+    let factorySidechains: FactorySidechains
 
     function setPoolIndexPrice(price: BigNumberish) {
         const oracleDecimals = 6
@@ -130,6 +135,11 @@ describe("Liquidator", () => {
         pool = fixture.pool
         liquidator = fixture.liquidator
         uniV3Callee = fixture.uniV3Callee
+        plain4Basic = fixture.plain4Basic
+        factorySidechains = fixture.factorySidechains
+        UST = fixture.UST
+        FRAX = fixture.FRAX
+        USDT = fixture.USDT
 
         // initialize usdc/weth pool
         await weth.mint(carol.address, parseEther("1000"))
@@ -201,6 +211,22 @@ describe("Liquidator", () => {
         })
 
         await syncIndexToMarketPrice(mockedBaseAggregator, pool)
+
+        // add curve liquidity
+        const fraxMillion = parseUnits("1000000", 18)
+        await usdc.mint(carol.address, usdcMillion.mul(5))
+        await UST.mint(carol.address, usdcMillion.mul(5))
+        await FRAX.mint(carol.address, fraxMillion.mul(5))
+        await USDT.mint(carol.address, usdcMillion.mul(5))
+
+        await usdc.connect(carol).approve(plain4Basic.address, usdcMillion)
+        await UST.connect(carol).approve(plain4Basic.address, usdcMillion)
+        await FRAX.connect(carol).approve(plain4Basic.address, fraxMillion)
+        await USDT.connect(carol).approve(plain4Basic.address, usdcMillion)
+
+        await plain4Basic
+            .connect(carol)
+            ["add_liquidity(uint256[4],uint256)"]([usdcMillion, usdcMillion, fraxMillion, usdcMillion], 0)
     })
 
     describe("constructor", () => {
@@ -412,7 +438,7 @@ describe("Liquidator", () => {
                 await makeAliceNonUsdCollateralLiquidatable("10")
             })
 
-            it("profit on single-hop swap", async () => {
+            it.only("profit on single-hop swap", async () => {
                 // alice:
                 // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
                 // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
@@ -432,6 +458,308 @@ describe("Liquidator", () => {
 
                 const usdcBalance = await usdc.balanceOf(liquidator.address)
 
+                expect(usdcBalance).to.be.gt(0)
+            })
+
+            it("profit on single-hop swap twice", async () => {
+                // alice:
+                // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
+                // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
+                // for ETH:
+                //   maxCollateralTokenOut = 48.1411419873 / (100 * (1 - 0.1)) = 0.5349015776
+                //   maxSettlementTokenIn = 0.5349015776 * (100 * (1 - 0.1)) = 48.141141984
+                //   actualSettlementTokenIn = min(48.141141984, 1) = 1
+                //   actualCollateralTokenOut = 1 / (100 * (1 - 0.1)) = 0.01111111111
+                //   est. profit (without slippage) = 0.01111111111 * 100 - 1 = 0.111111111
+                await liquidator.flashLiquidate(
+                    alice.address,
+                    parseUnits("1", usdcDecimals),
+                    parseUnits("0", usdcDecimals),
+                    { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
+                    "0x",
+                )
+
+                const usdcBalance1 = await usdc.balanceOf(liquidator.address)
+                expect(usdcBalance1).to.be.gt(0)
+
+                // alice:
+                // maxRepayNotional = (93.3938154553 - 1) * 0.5 = 46.1969077277
+                // maxRepayNotionalAndIFFee = 46.1969077277 / (1 - 0.03) = 47.6256780698
+                // for ETH:
+                //   maxCollateralTokenOut = 47.6256780698 / (100 * (1 - 0.1)) = 0.5291742008
+                //   maxSettlementTokenIn = 0.5291742008 * (100 * (1 - 0.1)) = 47.625678072
+                //   actualSettlementTokenIn = min(47.625678072, 1) = 1
+                //   actualCollateralTokenOut = 1 / (100 * (1 - 0.1)) = 0.01111111111
+                //   est. profit (without slippage) = 0.01111111111 * 100 - 1 = 0.111111111
+                await liquidator.flashLiquidate(
+                    alice.address,
+                    parseUnits("1", usdcDecimals),
+                    parseUnits("0", usdcDecimals),
+                    { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
+                    "0x",
+                )
+
+                const usdcBalance2 = await usdc.balanceOf(liquidator.address)
+                expect(usdcBalance2.sub(usdcBalance1)).to.be.gt(0)
+            })
+
+            it("profit on multi-hop swap", async () => {
+                // alice:
+                // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
+                // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
+                // for BTC:
+                //   maxCollateralTokenOut = min(48.1411419873 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
+                //   actualSettlementTokenIn = min(45, 100) = 45
+                //   actualCollateralTokenOut = 45 / (1000 * (1 - 0.1)) = 0.05
+                //   est. profit (without slippage) = 0.05 * 1000 - 45 = 5
+                await liquidator.flashLiquidate(
+                    alice.address,
+                    parseUnits("100", usdcDecimals),
+                    parseUnits("1", usdcDecimals),
+                    { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                    ethers.utils.solidityPack(
+                        ["address", "uint24", "address"],
+                        [weth.address, await poolWethUsdc.fee(), usdc.address],
+                    ),
+                )
+
+                const usdcBalance = await usdc.balanceOf(liquidator.address)
+                expect(usdcBalance).to.be.gt(0)
+            })
+
+            it("profit on multi-hop swap twice", async () => {
+                // alice:
+                // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
+                // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
+                // for BTC:
+                //   maxCollateralTokenOut = min(48.1411419873 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
+                //   actualSettlementTokenIn = min(45, 1) = 1
+                //   actualCollateralTokenOut = 1 / (1000 * (1 - 0.1)) = 0.001111111111
+                //   est. profit (without slippage) = 0.001111111111 * 1000 - 1 = 0.111111111
+                await liquidator.flashLiquidate(
+                    alice.address,
+                    parseUnits("1", usdcDecimals),
+                    parseUnits("0", usdcDecimals),
+                    { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                    ethers.utils.solidityPack(
+                        ["address", "uint24", "address"],
+                        [weth.address, await poolWethUsdc.fee(), usdc.address],
+                    ),
+                )
+
+                const usdcBalance1 = await usdc.balanceOf(liquidator.address)
+                expect(usdcBalance1).to.be.gt(0)
+
+                // alice:
+                // maxRepayNotional = (93.3938154553 - 1) * 0.5 = 46.1969077277
+                // maxRepayNotionalAndIFFee = 46.1969077277 / (1 - 0.03) = 47.6256780698
+                // for BTC:
+                //   maxCollateralTokenOut = min(47.6256780698 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
+                //   actualSettlementTokenIn = min(45, 1) = 1
+                //   actualCollateralTokenOut = 1 / (1000 * (1 - 0.1)) = 0.001111111111
+                //   est. profit (without slippage) = 0.001111111111 * 1000 - 1 = 0.111111111
+                await liquidator.flashLiquidate(
+                    alice.address,
+                    parseUnits("1", usdcDecimals),
+                    parseUnits("0", usdcDecimals),
+                    { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                    ethers.utils.solidityPack(
+                        ["address", "uint24", "address"],
+                        [weth.address, await poolWethUsdc.fee(), usdc.address],
+                    ),
+                )
+
+                const usdcBalance2 = await usdc.balanceOf(liquidator.address)
+                expect(usdcBalance2.sub(usdcBalance1)).to.be.gt(0)
+            })
+
+            describe("non-profitable swap", () => {
+                beforeEach(async () => {
+                    // manipulate ETH-USDC spot price so the trade is no longer profitable
+                    await uniV3Callee
+                        .connect(carol)
+                        .swapToLowerSqrtPrice(
+                            poolWethUsdc.address,
+                            encodePriceSqrt(parseUnits("75", usdcDecimals), parseEther("1")),
+                            carol.address,
+                        )
+
+                    // prepare Liquidator contract for non-profitable trades
+                    await usdc.mint(liquidator.address, parseUnits("100", usdcDecimals))
+                })
+
+                it("force trade on non-profitable single-hop swap", async () => {
+                    // alice:
+                    // maxRepayNotional = 90.193584 * 0.5 = 45.096792
+                    // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
+                    // for ETH:
+                    //   maxCollateralTokenOut = 46.4915381443 / (100 * (1 - 0.1)) = 0.516572646
+                    //   maxSettlementTokenIn = 0.516572646 * (100 * (1 - 0.1)) = 46.49153814
+                    //   est. profit (without slippage) = 0.516572646 * 75 - 46.49153814 = -7.74858969
+                    const usdcBalanceBefore = await usdc.balanceOf(liquidator.address)
+
+                    await liquidator.flashLiquidate(
+                        alice.address,
+                        parseUnits("100", usdcDecimals),
+                        parseUnits("-100", usdcDecimals), // small enough so we force the losing trade
+                        { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
+                        "0x",
+                    )
+
+                    const usdcBalanceAfter = await usdc.balanceOf(liquidator.address)
+                    expect(usdcBalanceAfter).to.be.lt(usdcBalanceBefore)
+                })
+
+                it("force trade on non-profitable multi-hop swap", async () => {
+                    // alice:
+                    // maxRepayNotional = 90.193584 * 0.5 = 45.096792
+                    // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
+                    // for BTC:
+                    //   maxCollateralTokenOut = min(46.4915381443 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                    //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
+                    //   est. profit (without slippage) = 0.05 * 1000 * 0.75 - 45 = -7.5
+                    const usdcBalanceBefore = await usdc.balanceOf(liquidator.address)
+
+                    await liquidator.flashLiquidate(
+                        alice.address,
+                        parseUnits("100", usdcDecimals),
+                        parseUnits("-100", usdcDecimals), // small enough so we force the losing trade
+                        { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                        ethers.utils.solidityPack(
+                            ["address", "uint24", "address"],
+                            [weth.address, await poolWethUsdc.fee(), usdc.address],
+                        ),
+                    )
+
+                    const usdcBalanceAfter = await usdc.balanceOf(liquidator.address)
+                    expect(usdcBalanceAfter).to.be.lt(usdcBalanceBefore)
+                })
+
+                it("force error, abort on non-profitable single-hop swap", async () => {
+                    // alice:
+                    // maxRepayNotional = 90.193584 * 0.5 = 45.096792
+                    // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
+                    // for ETH:
+                    //   maxCollateralTokenOut = 46.4915381443 / (100 * (1 - 0.1)) = 0.516572646
+                    //   maxSettlementTokenIn = 0.516572646 * (100 * (1 - 0.1)) = 46.49153814
+                    //   est. profit (without slippage) = 0.516572646 * 75 - 46.49153814 = -7.74858969
+                    await expect(
+                        liquidator.flashLiquidate(
+                            alice.address,
+                            parseUnits("100", usdcDecimals),
+                            parseUnits("0", usdcDecimals),
+                            { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
+                            "0x",
+                        ),
+                    ).to.be.revertedWith("L_LTMSTP")
+                })
+
+                it("force error, abort on non-profitable multi-hop swap", async () => {
+                    // alice:
+                    // maxRepayNotional = 90.193584 * 0.5 = 45.096792
+                    // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
+                    // for BTC:
+                    //   maxCollateralTokenOut = min(46.4915381443 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                    //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
+                    //   est. profit (without slippage) = 0.05 * 1000 * 0.75 - 45 = -7.5
+                    await expect(
+                        liquidator.flashLiquidate(
+                            alice.address,
+                            parseUnits("100", usdcDecimals),
+                            parseUnits("0", usdcDecimals),
+                            { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                            ethers.utils.solidityPack(
+                                ["address", "uint24", "address"],
+                                [weth.address, await poolWethUsdc.fee(), usdc.address],
+                            ),
+                        ),
+                    ).to.be.revertedWith("Too little received")
+                })
+            })
+        })
+
+        describe("trader collateral is not liquidatable", () => {
+            it("force error, not liquidatable", async () => {
+                await expect(
+                    liquidator.flashLiquidate(
+                        alice.address,
+                        parseUnits("100", usdcDecimals),
+                        parseUnits("0", usdcDecimals),
+                        { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
+                        ethers.utils.solidityPack(
+                            ["address", "uint24", "address"],
+                            [weth.address, await poolWethUsdc.fee(), usdc.address],
+                        ),
+                    ),
+                ).to.be.revertedWith("L_NL")
+            })
+        })
+
+        it("force error, not owner", async () => {
+            await expect(
+                liquidator
+                    .connect(davis)
+                    .flashLiquidate(
+                        alice.address,
+                        parseUnits("100", usdcDecimals),
+                        parseUnits("0", usdcDecimals),
+                        { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
+                        "0x",
+                    ),
+            ).to.be.revertedWith("Ownable: caller is not the owner")
+        })
+    })
+
+    describe.only("flashLiquidateThroughCurve", () => {
+        beforeEach(async () => {
+            // Alice has 1 eth and 0.05 btc:
+            // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8) * 0.75 = 90
+            await mintAndDeposit(fixture, alice, 1, weth)
+            await mintAndDeposit(fixture, alice, 50, UST)
+
+            // prepare to manipulate the spot price
+            await weth.mint(carol.address, parseEther("1000"))
+        })
+
+        describe("trader collateral is liquidatable", () => {
+            beforeEach(async () => {
+                // alice position size = 100 / 151.3733069 = 0.6606184541
+                // push down the index price to v so alice loss > 90 (non-settlement value threshold)
+                // (151.3733069 - v) * 0.6606184541 > 90
+                // v < 151.3733069 - 90 / 0.6606184541 = 15.1373306849
+                // est. unrealizedPnl = (10 - 151.3733069) * 0.6606184541 = -93.3938154553
+                await makeAliceNonUsdCollateralLiquidatable("10")
+            })
+
+            it.only("profit on plain pool", async () => {
+                // alice:
+                // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
+                // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
+                // for ETH:
+                //   maxCollateralTokenOut = 48.1411419873 / (100 * (1 - 0.1)) = 0.5349015776
+                //   maxSettlementTokenIn = 0.5349015776 * (100 * (1 - 0.1)) = 48.141141984
+                //   actualSettlementTokenIn = min(48.141141984, 100) = 48.141141984
+                //   actualCollateralTokenOut = 48.141141984 / (100 * (1 - 0.1)) = 0.5349015776
+                //   est. profit (without slippage) = 0.5349015776 * 100 - 48.141141984 = 5.349015776
+                console.log(`factory.address: ${factorySidechains.address}`)
+                console.log(`weth.address: ${weth.address}`)
+                console.log(`usdc.address: ${usdc.address}`)
+                console.log(`crv pool: ${plain4Basic.address}`)
+
+                await liquidator.flashLiquidateThroughCurve({
+                    trader: alice.address,
+                    maxSettlementTokenSpent: parseUnits("100", usdcDecimals),
+                    minSettlementTokenProfit: parseUnits("1", usdcDecimals),
+                    uniPool: poolWethUsdc.address,
+                    crvPool: plain4Basic.address,
+                    token: UST.address,
+                })
+
+                const usdcBalance = await usdc.balanceOf(liquidator.address)
+                console.log(`usdcBalance: ${usdcBalance.toString()}`)
                 expect(usdcBalance).to.be.gt(0)
             })
 

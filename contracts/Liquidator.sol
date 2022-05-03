@@ -20,6 +20,7 @@ import { ICollateralManager } from "@perp/curie-contract/contracts/interface/ICo
 import { IPoolCurveSwap } from "./Interfaces/IPoolCurveSwap.sol";
 import { IFactorySidechains } from "./Interfaces/IFactorySidechains.sol";
 import { PerpSafeCast } from "./lib/PerpSafeCast.sol";
+import "hardhat/console.sol";
 
 contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable {
     using SafeMath for uint256;
@@ -181,6 +182,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         bool zeroForOne = pathHead.tokenIn < pathHead.tokenOut;
         address pool = _getPool(pathHead.tokenIn, pathHead.tokenOut, pathHead.fee);
         int256 minSettlementAmount = settlement.toInt256().add(minSettlementTokenProfit);
+        console.log("settlement: ", settlement);
         bytes memory data =
             abi.encode(
                 SwapCallbackData({
@@ -214,6 +216,10 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         uint256 fee1,
         bytes calldata _data
     ) external override {
+        console.log("fee0");
+        console.log(fee0);
+        console.log("fee1");
+        console.log(fee1);
         // check the caller is the permissivePairAddress
         // L_NPPA: not permissive pair address
         require(msg.sender == _permissivePairAddress, "L_NPPA");
@@ -222,6 +228,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
 
         // liquidate
         IVault(_vault).liquidateCollateral(data.trader, data.token, data.collateralAmount, false);
+        console.log("vault liquidateCollateral");
 
         // exchange
         IPoolCurveSwap crvPool = IPoolCurveSwap(data.crvPool);
@@ -229,16 +236,31 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
 
         (int128 fromIndex, int128 toIndex, bool isUnderlying) =
             factory.get_coin_indices(data.crvPool, data.token, _settlementToken);
+        console.log("fromIndex");
+        console.logInt(fromIndex);
+        console.log("toIndex");
+        console.logInt(toIndex);
+        console.log("isUnderlying");
+        console.log(isUnderlying);
+
+        IERC20(data.token).safeApprove(address(crvPool), data.collateralAmount);
 
         if (isUnderlying) {
-            crvPool.exchange_underlying(fromIndex, toIndex, data.collateralAmount, data.minSettlementAmount);
+            uint256 amount =
+                crvPool.exchange_underlying(fromIndex, toIndex, data.collateralAmount, data.minSettlementAmount);
+            console.log("amount");
+            console.log(amount);
         } else {
-            crvPool.exchange(fromIndex, toIndex, data.collateralAmount, data.minSettlementAmount);
+            uint256 amount = crvPool.exchange(fromIndex, toIndex, data.collateralAmount, data.minSettlementAmount);
+            console.log("amount");
+            console.log(amount);
         }
 
         // return money
         uint256 fee = fee1 > fee0 ? fee1 : fee0;
         uint256 amountOwned = data.settlementAmount.add(fee);
+        console.log("amountOwned");
+        console.log(amountOwned);
         IERC20(_settlementToken).safeTransfer(msg.sender, amountOwned);
     }
 

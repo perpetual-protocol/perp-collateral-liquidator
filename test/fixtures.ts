@@ -1,7 +1,7 @@
 import { FakeContract } from "@defi-wonderland/smock"
 import { parseEther, parseUnits } from "ethers/lib/utils"
 import { ethers } from "hardhat"
-import { Liquidator, TestUniswapV3Callee } from "../typechain"
+import { FactorySidechains, Liquidator, Plain4Basic, TestUniswapV3Callee } from "../typechain"
 import {
     AccountBalance,
     BaseToken,
@@ -35,6 +35,8 @@ export interface Fixture {
     WETH2: TestERC20
     WBTC: TestERC20
     UST: TestERC20
+    FRAX: TestERC20
+    USDT: TestERC20
 
     mockedWethAggregator: FakeContract<TestAggregatorV3>
     poolWethUsdc: UniswapV3Pool
@@ -44,8 +46,8 @@ export interface Fixture {
     uniV3Factory: UniswapV3Factory
     uniV3Router: UniswapRouter
     uniV3Callee: TestUniswapV3Callee
-    // factorySidechains: FactorySidechains
-    // plain4Basic: Plain4Basic
+    factorySidechains: FactorySidechains
+    plain4Basic: Plain4Basic
     clearingHouse: ClearingHouse
     orderBook: OrderBook
     accountBalance: AccountBalance
@@ -63,6 +65,7 @@ export interface Fixture {
     baseToken2: BaseToken
     mockedBaseAggregator2: FakeContract<TestAggregatorV3>
     pool2: UniswapV3Pool
+    mockedUstAggregator: FakeContract<TestAggregatorV3>
 }
 
 export function createFixture(): () => Promise<Fixture> {
@@ -75,7 +78,7 @@ export function createFixture(): () => Promise<Fixture> {
         const weth9Factory = await ethers.getContractFactory("WETH9")
         const WETH9 = (await weth9Factory.deploy()) as WETH9
 
-        const { WETH: WETH2, WBTC, USDC, UST } = await collateralTokensFixture()
+        const { WETH: WETH2, WBTC, USDC, UST, FRAX, USDT } = await collateralTokensFixture()
         const usdcDecimals = await USDC.decimals()
 
         const collateralPriceFeedFixture = await createCollateralPriceFeedFixture()
@@ -89,30 +92,51 @@ export function createFixture(): () => Promise<Fixture> {
             chainlinkPriceFeed: wbtcChainlinkPriceFeed,
         }: CollateralPriceFeedFixture = await collateralPriceFeedFixture(await WBTC.decimals(), "1000")
 
+        const {
+            mockedAggregator: mockedUstAggregator,
+            chainlinkPriceFeed: ustChainlinkPriceFeed,
+        }: CollateralPriceFeedFixture = await collateralPriceFeedFixture(await UST.decimals(), "1")
+
         // ======================================
         // deploy Curve ecosystem
         //
-        // const factorySidechainsFactory = await ethers.getContractFactory("FactorySidechains")
-        // const factorySidechains = (await factorySidechainsFactory.deploy()) as FactorySidechains
+        const factorySidechainsFactory = await ethers.getContractFactory("FactorySidechains")
+        const factorySidechains = (await factorySidechainsFactory.deploy(
+            "0x0000000000000000000000000000000000000001",
+        )) as FactorySidechains
 
-        // await factorySidechains["deploy_plain_pool(string,string,address[4],uint256,uint256)"](
-        //     "4pool",
-        //     "4pool",
-        //     [
-        //         USDC.address,
-        //         UST.address,
-        //         "0x0000000000000000000000000000000000000000",
-        //         "0x0000000000000000000000000000000000000000",
-        //     ],
-        //     200,
-        //     4000000,
-        // )
+        const contractFactory = await ethers.getContractFactory("StableSwap")
+        const impl1 = await contractFactory.deploy()
+        const impl2 = await contractFactory.deploy()
+        const impl3 = await contractFactory.deploy()
+        const impl4 = await contractFactory.deploy()
 
-        // const poolUstUsdcAddr = await factorySidechains["find_pool_for_coins(address,address)"](
-        //     UST.address,
-        //     USDC.address,
-        // )
-        // const plain4Basic = (await ethers.getContractAt("Plain4Basic", poolUstUsdcAddr)) as Plain4Basic
+        await factorySidechains.set_plain_implementations(4, [
+            impl1.address,
+            impl2.address,
+            impl3.address,
+            impl4.address,
+            "0x0000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000",
+        ])
+
+        await factorySidechains["deploy_plain_pool(string,string,address[4],uint256,uint256)"](
+            "4pool",
+            "4pool",
+            [USDC.address, UST.address, FRAX.address, USDT.address],
+            200,
+            4000000,
+        )
+
+        const poolUstUsdcAddr = await factorySidechains["find_pool_for_coins(address,address)"](
+            UST.address,
+            USDC.address,
+        )
+        const plain4Basic = (await ethers.getContractAt("Plain4Basic", poolUstUsdcAddr)) as Plain4Basic
 
         // ======================================
         // deploy UniV3 ecosystem
@@ -223,6 +247,12 @@ export function createFixture(): () => Promise<Fixture> {
             discountRatio: (0.1e6).toString(),
             depositCap: parseUnits("1000", await WBTC.decimals()),
         })
+        await collateralManager.addCollateral(UST.address, {
+            priceFeed: ustChainlinkPriceFeed.address,
+            collateralRatio: (0.8e6).toString(),
+            discountRatio: (0.1e6).toString(),
+            depositCap: parseUnits("1000000", await UST.decimals()),
+        })
 
         // deploy a pool
         const poolAddr = await uniV3Factory.getPool(baseToken.address, quoteToken.address, uniFeeTier)
@@ -276,7 +306,7 @@ export function createFixture(): () => Promise<Fixture> {
         const liquidator = (await liquidatorFactory.deploy(
             vault.address,
             uniV3Router.address,
-            uniV3Router.address,
+            factorySidechains.address,
         )) as Liquidator
 
         return {
@@ -285,6 +315,8 @@ export function createFixture(): () => Promise<Fixture> {
             WETH2,
             WBTC,
             UST,
+            FRAX,
+            USDT,
             mockedWethAggregator,
             poolWethUsdc,
             mockedWbtcAggregator,
@@ -293,8 +325,8 @@ export function createFixture(): () => Promise<Fixture> {
             uniV3Factory,
             uniV3Router,
             uniV3Callee,
-            // factorySidechains,
-            // plain4Basic,
+            factorySidechains,
+            plain4Basic,
             clearingHouse,
             orderBook,
             accountBalance,
@@ -312,6 +344,7 @@ export function createFixture(): () => Promise<Fixture> {
             baseToken2,
             mockedBaseAggregator2,
             pool2,
+            mockedUstAggregator,
         }
     }
 }

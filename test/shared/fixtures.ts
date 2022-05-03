@@ -16,6 +16,8 @@ interface TokensFixture {
 
 interface CollateralTokensFixture {
     // address in ascending order
+    USDT: TestERC20
+    FRAX: TestERC20
     UST: TestERC20
     WBTC: TestERC20
     WETH: TestERC20
@@ -143,10 +145,12 @@ export async function collateralTokensFixture(): Promise<CollateralTokensFixture
     const token1 = await createCollateralTokenFixture()
     const token2 = await createCollateralTokenFixture()
     const token3 = await createCollateralTokenFixture()
+    const token4 = await createCollateralTokenFixture()
+    const token5 = await createCollateralTokenFixture()
 
     // usdc > eth > btc
     // to let us create these pools: eth/usdc, and btc/eth
-    const orderedToken = [token0, token1, token2, token3].sort((tokenA, tokenB) =>
+    const orderedToken = [token0, token1, token2, token3, token4, token5].sort((tokenA, tokenB) =>
         tokenA.address.toLowerCase() < tokenB.address.toLowerCase() ? -1 : 1,
     )
 
@@ -154,12 +158,16 @@ export async function collateralTokensFixture(): Promise<CollateralTokensFixture
     await orderedToken[1].__TestERC20_init("WETH", "WETH", "18")
     await orderedToken[2].__TestERC20_init("USDC", "USDC", "6")
     await orderedToken[3].__TestERC20_init("UST", "UST", "6")
+    await orderedToken[4].__TestERC20_init("FRAX", "FRAX", "18")
+    await orderedToken[5].__TestERC20_init("USDT", "USDT", "6")
 
     return {
         WBTC: orderedToken[0],
         WETH: orderedToken[1],
         USDC: orderedToken[2],
         UST: orderedToken[3],
+        FRAX: orderedToken[4],
+        USDT: orderedToken[5],
     }
 }
 
