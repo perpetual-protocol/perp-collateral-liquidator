@@ -1,11 +1,19 @@
-import { MockContract } from "@eth-optimism/smock"
+import { FakeContract } from "@defi-wonderland/smock"
 import { expect } from "chai"
 import { BigNumber, BigNumberish, Wallet } from "ethers"
 import { parseEther, parseUnits } from "ethers/lib/utils"
 import { ethers, waffle } from "hardhat"
 import { Liquidator as LiquidatorApp } from "../src/liquidator"
 import { Liquidator, TestUniswapV3Callee } from "../typechain"
-import { AccountBalance, BaseToken, ClearingHouse, Exchange, MarketRegistry, Vault } from "../typechain/perp-curie"
+import {
+    AccountBalance,
+    BaseToken,
+    ClearingHouse,
+    Exchange,
+    MarketRegistry,
+    TestAggregatorV3,
+    Vault,
+} from "../typechain/perp-curie"
 import { TestERC20 } from "../typechain/test"
 import { UniswapV3Pool } from "../typechain/uniswap-v3-core"
 import { createFixture, Fixture } from "./fixtures"
@@ -27,7 +35,7 @@ describe("Liquidator", () => {
     let pool: UniswapV3Pool
     let marketRegistry: MarketRegistry
     let baseToken: BaseToken
-    let mockedBaseAggregator: MockContract
+    let mockedBaseAggregator: FakeContract<TestAggregatorV3>
     let liquidator: Liquidator
     let usdc: TestERC20
     let weth: TestERC20
@@ -41,7 +49,7 @@ describe("Liquidator", () => {
 
     function setPoolIndexPrice(price: BigNumberish) {
         const oracleDecimals = 6
-        mockedBaseAggregator.smocked.latestRoundData.will.return.with(async () => {
+        mockedBaseAggregator.latestRoundData.returns(async () => {
             return [0, parseUnits(price.toString(), oracleDecimals), 0, 0, 0]
         })
     }

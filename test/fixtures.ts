@@ -1,7 +1,7 @@
-import { MockContract } from "@eth-optimism/smock"
+import { FakeContract } from "@defi-wonderland/smock"
 import { parseEther, parseUnits } from "ethers/lib/utils"
 import { ethers } from "hardhat"
-import { FactorySidechains, Liquidator, Plain4Basic, TestUniswapV3Callee } from "../typechain"
+import { Liquidator, TestUniswapV3Callee } from "../typechain"
 import {
     AccountBalance,
     BaseToken,
@@ -13,6 +13,7 @@ import {
     MarketRegistry,
     OrderBook,
     QuoteToken,
+    TestAggregatorV3,
     Vault,
 } from "../typechain/perp-curie"
 import { TestERC20, WETH9 } from "../typechain/test"
@@ -35,16 +36,16 @@ export interface Fixture {
     WBTC: TestERC20
     UST: TestERC20
 
-    mockedWethAggregator: MockContract
+    mockedWethAggregator: FakeContract<TestAggregatorV3>
     poolWethUsdc: UniswapV3Pool
     poolWbtcWeth: UniswapV3Pool
-    mockedWbtcAggregator: MockContract
+    mockedWbtcAggregator: FakeContract<TestAggregatorV3>
     liquidator: Liquidator
     uniV3Factory: UniswapV3Factory
     uniV3Router: UniswapRouter
     uniV3Callee: TestUniswapV3Callee
-    factorySidechains: FactorySidechains
-    plain4Basic: Plain4Basic
+    // factorySidechains: FactorySidechains
+    // plain4Basic: Plain4Basic
     clearingHouse: ClearingHouse
     orderBook: OrderBook
     accountBalance: AccountBalance
@@ -58,9 +59,9 @@ export interface Fixture {
     uniFeeTier: number
     quoteToken: QuoteToken
     baseToken: BaseToken
-    mockedBaseAggregator: MockContract
+    mockedBaseAggregator: FakeContract<TestAggregatorV3>
     baseToken2: BaseToken
-    mockedBaseAggregator2: MockContract
+    mockedBaseAggregator2: FakeContract<TestAggregatorV3>
     pool2: UniswapV3Pool
 }
 
@@ -91,27 +92,27 @@ export function createFixture(): () => Promise<Fixture> {
         // ======================================
         // deploy Curve ecosystem
         //
-        const factorySidechainsFactory = await ethers.getContractFactory("FactorySidechains")
-        const factorySidechains = (await factorySidechainsFactory.deploy()) as FactorySidechains
+        // const factorySidechainsFactory = await ethers.getContractFactory("FactorySidechains")
+        // const factorySidechains = (await factorySidechainsFactory.deploy()) as FactorySidechains
 
-        await factorySidechains["deploy_plain_pool(string,string,address[4],uint256,uint256)"](
-            "4pool",
-            "4pool",
-            [
-                USDC.address,
-                UST.address,
-                "0x0000000000000000000000000000000000000000",
-                "0x0000000000000000000000000000000000000000",
-            ],
-            200,
-            4000000,
-        )
+        // await factorySidechains["deploy_plain_pool(string,string,address[4],uint256,uint256)"](
+        //     "4pool",
+        //     "4pool",
+        //     [
+        //         USDC.address,
+        //         UST.address,
+        //         "0x0000000000000000000000000000000000000000",
+        //         "0x0000000000000000000000000000000000000000",
+        //     ],
+        //     200,
+        //     4000000,
+        // )
 
-        const poolUstUsdcAddr = await factorySidechains["find_pool_for_coins(address,address)"](
-            UST.address,
-            USDC.address,
-        )
-        const plain4Basic = (await ethers.getContractAt("Plain4Basic", poolUstUsdcAddr)) as Plain4Basic
+        // const poolUstUsdcAddr = await factorySidechains["find_pool_for_coins(address,address)"](
+        //     UST.address,
+        //     USDC.address,
+        // )
+        // const plain4Basic = (await ethers.getContractAt("Plain4Basic", poolUstUsdcAddr)) as Plain4Basic
 
         // ======================================
         // deploy UniV3 ecosystem
@@ -141,7 +142,7 @@ export function createFixture(): () => Promise<Fixture> {
         // deploy perp v2 ecosystem
         //
 
-        let baseToken: BaseToken, quoteToken: QuoteToken, mockedBaseAggregator: MockContract
+        let baseToken: BaseToken, quoteToken: QuoteToken, mockedBaseAggregator: FakeContract<TestAggregatorV3>
         const { token0, mockedAggregator0, token1 } = await tokensFixture()
 
         // we assume (base, quote) == (token0, token1)
@@ -272,7 +273,11 @@ export function createFixture(): () => Promise<Fixture> {
         //
 
         const liquidatorFactory = await ethers.getContractFactory("Liquidator")
-        const liquidator = (await liquidatorFactory.deploy(vault.address, uniV3Router.address)) as Liquidator
+        const liquidator = (await liquidatorFactory.deploy(
+            vault.address,
+            uniV3Router.address,
+            uniV3Router.address,
+        )) as Liquidator
 
         return {
             USDC,
@@ -288,8 +293,8 @@ export function createFixture(): () => Promise<Fixture> {
             uniV3Factory,
             uniV3Router,
             uniV3Callee,
-            factorySidechains,
-            plain4Basic,
+            // factorySidechains,
+            // plain4Basic,
             clearingHouse,
             orderBook,
             accountBalance,

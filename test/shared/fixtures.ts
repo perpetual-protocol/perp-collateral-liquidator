@@ -1,7 +1,7 @@
-import { MockContract, smockit } from "@eth-optimism/smock"
+import { FakeContract, smock } from "@defi-wonderland/smock"
 import { parseUnits } from "ethers/lib/utils"
 import { ethers } from "hardhat"
-import { BaseToken, QuoteToken, VirtualToken } from "../../typechain/perp-curie"
+import { BaseToken, QuoteToken, TestAggregatorV3, VirtualToken } from "../../typechain/perp-curie"
 import { ChainlinkPriceFeed } from "../../typechain/perp-oracle"
 import { TestERC20 } from "../../typechain/test"
 import { UniswapV3Factory, UniswapV3Pool } from "../../typechain/uniswap-v3-core"
@@ -10,8 +10,8 @@ import { isAscendingTokenOrder } from "./utilities"
 interface TokensFixture {
     token0: BaseToken
     token1: QuoteToken
-    mockedAggregator0: MockContract
-    mockedAggregator1: MockContract
+    mockedAggregator0: FakeContract<TestAggregatorV3>
+    mockedAggregator1: FakeContract<TestAggregatorV3>
 }
 
 interface CollateralTokensFixture {
@@ -30,11 +30,11 @@ interface PoolFixture {
 
 interface BaseTokenFixture {
     baseToken: BaseToken
-    mockedAggregator: MockContract
+    mockedAggregator: FakeContract<TestAggregatorV3>
 }
 
 export interface CollateralPriceFeedFixture {
-    mockedAggregator: MockContract
+    mockedAggregator: FakeContract<TestAggregatorV3>
     chainlinkPriceFeed: ChainlinkPriceFeed
 }
 
@@ -51,9 +51,9 @@ export function createBaseTokenFixture(name: string, symbol: string): () => Prom
     return async (): Promise<BaseTokenFixture> => {
         const aggregatorFactory = await ethers.getContractFactory("TestAggregatorV3")
         const aggregator = await aggregatorFactory.deploy()
-        const mockedAggregator = await smockit(aggregator)
+        const mockedAggregator = (await smock.fake(aggregator)) as FakeContract<TestAggregatorV3>
 
-        mockedAggregator.smocked.decimals.will.return.with(async () => {
+        mockedAggregator.decimals.returns(async () => {
             return 6
         })
 
@@ -80,13 +80,13 @@ export function createCollateralPriceFeedFixture(): (number, string) => Promise<
     return async (tokenDecimal: number, defaultPrice: string): Promise<CollateralPriceFeedFixture> => {
         const aggregatorFactory = await ethers.getContractFactory("TestAggregatorV3")
         const aggregator = await aggregatorFactory.deploy()
-        const mockedAggregator = await smockit(aggregator)
+        const mockedAggregator = (await smock.fake(aggregator)) as FakeContract<TestAggregatorV3>
 
-        mockedAggregator.smocked.decimals.will.return.with(async () => {
+        mockedAggregator.decimals.returns(async () => {
             return tokenDecimal
         })
 
-        mockedAggregator.smocked.latestRoundData.will.return.with(async () => {
+        mockedAggregator.latestRoundData.returns(async () => {
             return [0, parseUnits(defaultPrice, tokenDecimal), 0, 0, 0]
         })
 
@@ -117,8 +117,8 @@ export async function tokensFixture(): Promise<TokensFixture> {
 
     let token0: BaseToken
     let token1: QuoteToken
-    let mockedAggregator0: MockContract
-    let mockedAggregator1: MockContract
+    let mockedAggregator0: FakeContract<TestAggregatorV3>
+    let mockedAggregator1: FakeContract<TestAggregatorV3>
     if (isAscendingTokenOrder(randomToken0.address, randomToken1.address)) {
         token0 = randomToken0
         mockedAggregator0 = randomMockedAggregator0

@@ -13,7 +13,7 @@ const func: DeployFunction = async function (hre: any) {
 
     await deploy("Liquidator", {
         from: deployer,
-        args: [metadata.contracts.Vault.address, uniswapV3SwapRouterAddress],
+        args: [metadata.contracts.Vault.address, uniswapV3SwapRouterAddress, uniswapV3SwapRouterAddress],
         log: true,
         autoMine: true, // speed up deployment on local network (ganache, hardhat), no effect on live networks
     })
