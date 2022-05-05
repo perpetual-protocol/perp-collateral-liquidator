@@ -43,7 +43,7 @@ export class Liquidator {
     nextNonce: number
     vault: Vault
     settlementToken: IERC20Metadata
-    settlementTokenDeciamls: number
+    settlementTokenDecimals: number
     uniPool: typeof optitmismEthereum.uniPool
     crvPool: typeof optitmismEthereum.crvPool
 
@@ -73,7 +73,7 @@ export class Liquidator {
 
         this.settlementToken = IERC20Metadata__factory.connect(await this.vault.getSettlementToken(), this.wallet)
 
-        this.settlementTokenDeciamls = await this.settlementToken.decimals()
+        this.settlementTokenDecimals = await this.settlementToken.decimals()
 
         console.log({
             event: "LiquidatorWalletFetched",
@@ -210,8 +210,8 @@ export class Liquidator {
 
                 const args: [string, ethers.BigNumberish, ethers.BigNumberish, Hop, ethers.BytesLike] = [
                     account,
-                    ethers.utils.parseUnits(this.config.maxSettlementTokenSpent, this.settlementTokenDeciamls),
-                    ethers.utils.parseUnits(this.config.minSettlementTokenProfit, this.settlementTokenDeciamls),
+                    ethers.utils.parseUnits(this.config.maxSettlementTokenSpent, this.settlementTokenDecimals),
+                    ethers.utils.parseUnits(this.config.minSettlementTokenProfit, this.settlementTokenDecimals),
                     path.head,
                     path.tail,
                 ]
@@ -239,11 +239,11 @@ export class Liquidator {
                         uniPool,
                         maxSettlementTokenSpent: ethers.utils.parseUnits(
                             this.config.maxSettlementTokenSpent,
-                            this.settlementTokenDeciamls,
+                            this.settlementTokenDecimals,
                         ),
                         minSettlementTokenProfit: ethers.utils.parseUnits(
                             this.config.minSettlementTokenProfit,
-                            this.settlementTokenDeciamls,
+                            this.settlementTokenDecimals,
                         ),
                         token: targetCollateralAddress,
                     })
@@ -279,8 +279,8 @@ export class Liquidator {
 
                 const args: [string, ethers.BigNumberish, ethers.BigNumberish, Hop, ethers.BytesLike] = [
                     account,
-                    ethers.utils.parseUnits(this.config.maxSettlementTokenSpent, this.settlementTokenDeciamls),
-                    ethers.utils.parseUnits(this.config.minSettlementTokenProfit, this.settlementTokenDeciamls),
+                    ethers.utils.parseUnits(this.config.maxSettlementTokenSpent, this.settlementTokenDecimals),
+                    ethers.utils.parseUnits(this.config.minSettlementTokenProfit, this.settlementTokenDecimals),
                     path.head,
                     path.tail,
                 ]
@@ -319,11 +319,11 @@ export class Liquidator {
                             uniPool,
                             maxSettlementTokenSpent: ethers.utils.parseUnits(
                                 this.config.maxSettlementTokenSpent,
-                                this.settlementTokenDeciamls,
+                                this.settlementTokenDecimals,
                             ),
                             minSettlementTokenProfit: ethers.utils.parseUnits(
                                 this.config.minSettlementTokenProfit,
-                                this.settlementTokenDeciamls,
+                                this.settlementTokenDecimals,
                             ),
                             token: targetCollateralAddress,
                         })
@@ -380,6 +380,7 @@ export class Liquidator {
             })
         }
     }
+
     async tryLiquidate(account: string): Promise<void> {
         if (!(await this.vault.isLiquidatable(account))) {
             return
