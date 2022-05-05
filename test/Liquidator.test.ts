@@ -963,16 +963,6 @@ describe("Liquidator", () => {
     describe("app", () => {
         let liquidatorApp: LiquidatorApp
 
-        beforeEach(async () => {
-            // Alice has 1 eth and 0.05 btc:
-            // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8) * 0.75 = 90
-            await mintAndDeposit(fixture, alice, 1, weth)
-            await mintAndDeposit(fixture, alice, 0.05, wbtc)
-
-            // prepare to manipulate the spot price
-            await weth.mint(carol.address, parseEther("1000"))
-        })
-
         describe("correct config", () => {
             beforeEach(async () => {
                 // initialize liquidator app
@@ -983,7 +973,7 @@ describe("Liquidator", () => {
                     liquidatorContractAddr: liquidator.address,
                     maxSettlementTokenSpent: "100",
                     minSettlementTokenProfit: "1",
-                    pathMap: {
+                    uniPool: {
                         [wbtc.address]: {
                             head: {
                                 tokenIn: wbtc.address,
@@ -1004,20 +994,48 @@ describe("Liquidator", () => {
                             tail: "0x",
                         },
                     },
+                    crvPool: {
+                        [UST.address]: {
+                            uniPool: poolWethUsdc.address,
+                            crvPool: plain4Basic.address,
+                        },
+                    },
                 })
             })
 
-            describe("trader collateral is liquidatable", () => {
-                beforeEach(async () => {
+            it("trader collateral is liquidatable", () => {
+                it("flashLiquidate", async () => {
+                    // Alice has 1 eth and 0.05 btc:
+                    // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8) * 0.75 = 90
+                    await mintAndDeposit(fixture, alice, 1, weth)
+                    await mintAndDeposit(fixture, alice, 0.05, wbtc)
+
                     // alice position size = 100 / 151.3733069 = 0.6606184541
                     // push down the index price to v so alice loss > 90 (non-settlement value threshold)
                     // (151.3733069 - v) * 0.6606184541 > 90
                     // v < 151.3733069 - 90 / 0.6606184541 = 15.1373306849
                     // est. unrealizedPnl = (10 - 151.3733069) * 0.6606184541 = -93.3938154553
                     await makeAliceNonUsdCollateralLiquidatable("10")
+
+                    await liquidatorApp.tryLiquidate(alice.address)
+
+                    const usdcBalance = await usdc.balanceOf(liquidator.address)
+                    expect(usdcBalance).to.be.gt(0)
                 })
 
-                it("liquidate", async () => {
+                it("flashLiquidateThroughCurve", async () => {
+                    // Alice has 100 UST and 0.05 btc:
+                    // non-settlement value threshold: (100 * 1 * 0.8 + 0.05 * 1000 * 0.8) * 0.75 = 90
+                    await mintAndDeposit(fixture, alice, 100, UST)
+                    await mintAndDeposit(fixture, alice, 0.05, wbtc)
+
+                    // alice position size = 100 / 151.3733069 = 0.6606184541
+                    // push down the index price to v so alice loss > 90 (non-settlement value threshold)
+                    // (151.3733069 - v) * 0.6606184541 > 90
+                    // v < 151.3733069 - 90 / 0.6606184541 = 15.1373306849
+                    // est. unrealizedPnl = (10 - 151.3733069) * 0.6606184541 = -93.3938154553
+                    await makeAliceNonUsdCollateralLiquidatable("10")
+
                     await liquidatorApp.tryLiquidate(alice.address)
 
                     const usdcBalance = await usdc.balanceOf(liquidator.address)
@@ -1027,6 +1045,11 @@ describe("Liquidator", () => {
 
             describe("trader collateral is not liquidatable", () => {
                 it("does not liquidate", async () => {
+                    // Alice has 1 eth and 0.05 btc:
+                    // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8) * 0.75 = 90
+                    await mintAndDeposit(fixture, alice, 1, weth)
+                    await mintAndDeposit(fixture, alice, 0.05, wbtc)
+
                     const blockNumber = await waffle.provider.getBlockNumber()
                     // suppose to pass without any exception
                     await liquidatorApp.tryLiquidate(alice.address)
@@ -1045,7 +1068,7 @@ describe("Liquidator", () => {
                     liquidatorContractAddr: liquidator.address,
                     maxSettlementTokenSpent: "100",
                     minSettlementTokenProfit: "1",
-                    pathMap: {
+                    uniPool: {
                         // deliberately set to a unknown token
                         "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef": {
                             head: {
@@ -1056,7 +1079,18 @@ describe("Liquidator", () => {
                             tail: "0x",
                         },
                     },
+                    crvPool: {
+                        ["0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"]: {
+                            uniPool: "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+                            crvPool: "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+                        },
+                    },
                 })
+
+                // Alice has 1 eth and 0.05 btc:
+                // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8) * 0.75 = 90
+                await mintAndDeposit(fixture, alice, 1, weth)
+                await mintAndDeposit(fixture, alice, 0.05, wbtc)
             })
 
             it("does not liquidate", async () => {

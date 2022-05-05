@@ -1,6 +1,6 @@
 import { Mutex } from "async-mutex"
 import "dotenv/config"
-import { ethers, Wallet } from "ethers"
+import { ContractTransaction, ethers, Wallet } from "ethers"
 import _ from "lodash"
 import fetch from "node-fetch"
 import { Liquidator as LiquidatorContract, Liquidator__factory } from "../typechain"
@@ -20,13 +20,19 @@ export type Config = {
     liquidatorContractAddr: string
     maxSettlementTokenSpent: string
     minSettlementTokenProfit: string
-    pathMap: typeof optitmismEthereum
+    uniPool: typeof optitmismEthereum.uniPool
+    crvPool: typeof optitmismEthereum.crvPool
 }
 
 // Alchemy's current rate limit is 660 CU per second, and an eth_call takes 26 CU
 // so we could have around 25 eth_calls per second.
 // https://docs.alchemy.com/alchemy/documentation/rate-limits
 const REQUEST_CHUNK_SIZE = 25
+
+enum LiquidateType {
+    FlashLiquidate = "FlashLiquidate",
+    FlashLiquidateThroughCurve = "FlashLiquidateThroughCurve",
+}
 
 export class Liquidator {
     config: Config
@@ -38,7 +44,8 @@ export class Liquidator {
     vault: Vault
     settlementToken: IERC20Metadata
     settlementTokenDeciamls: number
-    pathMap: typeof optitmismEthereum
+    uniPool: typeof optitmismEthereum.uniPool
+    crvPool: typeof optitmismEthereum.crvPool
 
     async setup(config: Config): Promise<void> {
         console.log({
@@ -50,11 +57,14 @@ export class Liquidator {
 
         this.subgraphEndpoint = this.config.subgraphEndPt
 
-        this.pathMap = this.config.pathMap
+        this.uniPool = this.config.uniPool
+
+        this.crvPool = this.config.crvPool
 
         this.wallet = this.config.wallet
 
         this.nextNonce = await this.wallet.getTransactionCount()
+
         this.mutex = new Mutex()
 
         this.contract = Liquidator__factory.connect(this.config.liquidatorContractAddr, this.wallet)
@@ -62,6 +72,7 @@ export class Liquidator {
         this.vault = Vault__factory.connect(await this.contract.getVault(), this.wallet)
 
         this.settlementToken = IERC20Metadata__factory.connect(await this.vault.getSettlementToken(), this.wallet)
+
         this.settlementTokenDeciamls = await this.settlementToken.decimals()
 
         console.log({
@@ -179,79 +190,179 @@ export class Liquidator {
         return data
     }
 
-    async tryLiquidate(account: string): Promise<void> {
-        if (!(await this.vault.isLiquidatable(account))) {
-            return
-        }
+    inUniPool(address: string): boolean {
+        return _.has(this.uniPool, address)
+    }
 
-        const targetCollateralAddress = await this.contract.getMaxProfitableCollateralFromCollaterals(
-            account,
-            Object.keys(this.pathMap),
-        )
+    inCrvPool(address: string): boolean {
+        return _.has(this.crvPool, address)
+    }
 
-        if (targetCollateralAddress === "0x0000000000000000000000000000000000000000") {
-            console.info({ event: "NoProfitableCollateralInPathMap", params: { collateral: targetCollateralAddress } })
-            return
-        }
+    async liquidateCallStatic(liquidateType: string, account: string, targetCollateralAddress: string): Promise<void> {
+        switch (liquidateType) {
+            case LiquidateType.FlashLiquidate:
+                const path = this.uniPool[targetCollateralAddress]
 
-        const path = this.pathMap[targetCollateralAddress]
+                if (!path) {
+                    console.warn({ event: "UnknownCollateral", params: { collateral: targetCollateralAddress } })
+                    return
+                }
 
-        if (!path) {
-            console.warn({ event: "UnknownCollateral", params: { collateral: targetCollateralAddress } })
-            return
-        }
-
-        const args: [string, ethers.BigNumberish, ethers.BigNumberish, Hop, ethers.BytesLike] = [
-            account,
-            ethers.utils.parseUnits(this.config.maxSettlementTokenSpent, this.settlementTokenDeciamls),
-            ethers.utils.parseUnits(this.config.minSettlementTokenProfit, this.settlementTokenDeciamls),
-            path.head,
-            path.tail,
-        ]
-
-        try {
-            await this.contract.callStatic.flashLiquidate(...args)
-        } catch (e) {
-            console.warn({
-                event: "FlashLiquidateWillFail",
-                params: {
+                const args: [string, ethers.BigNumberish, ethers.BigNumberish, Hop, ethers.BytesLike] = [
                     account,
-                    collateral: targetCollateralAddress,
-                    reason: e.toString(),
-                },
-            })
-            return
+                    ethers.utils.parseUnits(this.config.maxSettlementTokenSpent, this.settlementTokenDeciamls),
+                    ethers.utils.parseUnits(this.config.minSettlementTokenProfit, this.settlementTokenDeciamls),
+                    path.head,
+                    path.tail,
+                ]
+
+                try {
+                    await this.contract.callStatic.flashLiquidate(...args)
+                } catch (e) {
+                    console.warn({
+                        event: `${liquidateType}WillFail`,
+                        params: {
+                            account,
+                            collateral: targetCollateralAddress,
+                            reason: e.toString(),
+                        },
+                    })
+                }
+                break
+            case LiquidateType.FlashLiquidateThroughCurve:
+                const { crvPool, uniPool } = this.crvPool[targetCollateralAddress]
+
+                try {
+                    await this.contract.callStatic.flashLiquidateThroughCurve({
+                        trader: account,
+                        crvPool,
+                        uniPool,
+                        maxSettlementTokenSpent: ethers.utils.parseUnits(
+                            this.config.maxSettlementTokenSpent,
+                            this.settlementTokenDeciamls,
+                        ),
+                        minSettlementTokenProfit: ethers.utils.parseUnits(
+                            this.config.minSettlementTokenProfit,
+                            this.settlementTokenDeciamls,
+                        ),
+                        token: targetCollateralAddress,
+                    })
+                } catch (e) {
+                    console.warn({
+                        event: `${liquidateType}WillFail`,
+                        params: {
+                            account,
+                            collateral: targetCollateralAddress,
+                            reason: e.toString(),
+                        },
+                    })
+                }
+                break
+            default:
+                throw new Error("Unknown liquidate type")
         }
+    }
 
-        const tx = await this.mutex.runExclusive(async () => {
-            try {
-                const tx = await this.contract.flashLiquidate(...args)
-                console.log({
-                    event: "SendFlashLiquidateTxSucceeded",
-                    params: {
-                        account,
-                        collateral: targetCollateralAddress,
-                        txHash: tx.hash,
-                    },
-                })
-                this.nextNonce++
-                return tx
-            } catch (e) {
-                console.error({
-                    event: "SendFlashLiquidateTxFailed",
-                    params: {
-                        account,
-                        collateral: targetCollateralAddress,
-                        reason: e.toString(),
-                    },
-                })
-            }
-        })
+    async liquidateSend(
+        liquidateType: string,
+        account: string,
+        targetCollateralAddress: string,
+    ): Promise<ContractTransaction> {
+        switch (liquidateType) {
+            case LiquidateType.FlashLiquidate:
+                const path = this.uniPool[targetCollateralAddress]
 
+                if (!path) {
+                    console.warn({ event: "UnknownCollateral", params: { collateral: targetCollateralAddress } })
+                    return
+                }
+
+                const args: [string, ethers.BigNumberish, ethers.BigNumberish, Hop, ethers.BytesLike] = [
+                    account,
+                    ethers.utils.parseUnits(this.config.maxSettlementTokenSpent, this.settlementTokenDeciamls),
+                    ethers.utils.parseUnits(this.config.minSettlementTokenProfit, this.settlementTokenDeciamls),
+                    path.head,
+                    path.tail,
+                ]
+                return await this.mutex.runExclusive(async () => {
+                    try {
+                        const tx = await this.contract.flashLiquidate(...args)
+                        console.log({
+                            event: `Send${liquidateType}TxSucceeded`,
+                            params: {
+                                account,
+                                collateral: targetCollateralAddress,
+                                txHash: tx.hash,
+                            },
+                        })
+                        this.nextNonce++
+                        return tx
+                    } catch (e) {
+                        console.error({
+                            event: `Send${liquidateType}TxFailed`,
+                            params: {
+                                account,
+                                collateral: targetCollateralAddress,
+                                reason: e.toString(),
+                            },
+                        })
+                    }
+                })
+            case LiquidateType.FlashLiquidateThroughCurve:
+                const { crvPool, uniPool } = this.crvPool[targetCollateralAddress]
+
+                return await this.mutex.runExclusive(async () => {
+                    try {
+                        const tx = await this.contract.flashLiquidateThroughCurve({
+                            trader: account,
+                            crvPool,
+                            uniPool,
+                            maxSettlementTokenSpent: ethers.utils.parseUnits(
+                                this.config.maxSettlementTokenSpent,
+                                this.settlementTokenDeciamls,
+                            ),
+                            minSettlementTokenProfit: ethers.utils.parseUnits(
+                                this.config.minSettlementTokenProfit,
+                                this.settlementTokenDeciamls,
+                            ),
+                            token: targetCollateralAddress,
+                        })
+                        console.log({
+                            event: `Send${liquidateType}TxSucceeded`,
+                            params: {
+                                account,
+                                collateral: targetCollateralAddress,
+                                txHash: tx.hash,
+                            },
+                        })
+                        this.nextNonce++
+                        return tx
+                    } catch (e) {
+                        console.error({
+                            event: `Send${liquidateType}TxFailed`,
+                            params: {
+                                account,
+                                collateral: targetCollateralAddress,
+                                reason: e.toString(),
+                            },
+                        })
+                    }
+                })
+            default:
+                throw new Error("Unknown liquidate type")
+        }
+    }
+
+    async liquidateCheck(
+        liquidateType: string,
+        tx: ContractTransaction,
+        account: string,
+        targetCollateralAddress: string,
+    ): Promise<void> {
         try {
             await tx.wait()
             console.log({
-                event: "FlashLiquidateSucceeded",
+                event: `${liquidateType}Succeeded`,
                 params: {
                     account,
                     collateral: targetCollateralAddress,
@@ -260,13 +371,46 @@ export class Liquidator {
             })
         } catch (e) {
             console.error({
-                event: "FlashLiquidateFailed",
+                event: `${liquidateType}Failed`,
                 params: {
                     account,
                     collateral: targetCollateralAddress,
                     reason: e.toString(),
                 },
             })
+        }
+    }
+    async tryLiquidate(account: string): Promise<void> {
+        if (!(await this.vault.isLiquidatable(account))) {
+            return
+        }
+
+        const targetCollateralAddress = await this.contract.getMaxProfitableCollateralFromCollaterals(
+            account,
+            _.concat(Object.keys(this.uniPool), Object.keys(this.crvPool)),
+        )
+
+        if (targetCollateralAddress === "0x0000000000000000000000000000000000000000") {
+            console.info({ event: "NoProfitableCollateralInPathMap", params: { collateral: targetCollateralAddress } })
+            return
+        }
+
+        if (this.inUniPool(targetCollateralAddress)) {
+            await this.liquidateCallStatic(LiquidateType.FlashLiquidate, account, targetCollateralAddress)
+
+            const tx = await this.liquidateSend(LiquidateType.FlashLiquidate, account, targetCollateralAddress)
+
+            await this.liquidateCheck(LiquidateType.FlashLiquidate, tx, account, targetCollateralAddress)
+        } else if (this.inCrvPool(targetCollateralAddress)) {
+            await this.liquidateCallStatic(LiquidateType.FlashLiquidateThroughCurve, account, targetCollateralAddress)
+
+            const tx = await this.liquidateSend(
+                LiquidateType.FlashLiquidateThroughCurve,
+                account,
+                targetCollateralAddress,
+            )
+
+            await this.liquidateCheck(LiquidateType.FlashLiquidateThroughCurve, tx, account, targetCollateralAddress)
         }
     }
 }
