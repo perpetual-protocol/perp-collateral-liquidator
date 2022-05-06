@@ -4,6 +4,7 @@ import { BigNumber, BigNumberish, Wallet } from "ethers"
 import { parseEther, parseUnits } from "ethers/lib/utils"
 import { ethers, waffle } from "hardhat"
 import { Liquidator as LiquidatorApp } from "../src/liquidator"
+import { LiquidationType } from "../src/metadata"
 import { FactorySidechains, Liquidator, Plain4Basic, TestUniswapV3Callee } from "../typechain"
 import {
     AccountBalance,
@@ -956,31 +957,37 @@ describe("Liquidator", () => {
                     liquidatorContractAddr: liquidator.address,
                     maxSettlementTokenSpent: "100",
                     minSettlementTokenProfit: "1",
-                    uniPool: {
+                    pathMap: {
                         [wbtc.address]: {
-                            head: {
-                                tokenIn: wbtc.address,
-                                fee: "10000",
-                                tokenOut: weth.address,
+                            method: LiquidationType.FlashLiquidate,
+                            params: {
+                                head: {
+                                    tokenIn: wbtc.address,
+                                    fee: "10000",
+                                    tokenOut: weth.address,
+                                },
+                                tail: ethers.utils.solidityPack(
+                                    ["address", "uint24", "address"],
+                                    [weth.address, "10000", usdc.address],
+                                ),
                             },
-                            tail: ethers.utils.solidityPack(
-                                ["address", "uint24", "address"],
-                                [weth.address, "10000", usdc.address],
-                            ),
                         },
                         [weth.address]: {
-                            head: {
-                                tokenIn: weth.address,
-                                fee: "10000",
-                                tokenOut: usdc.address,
+                            method: LiquidationType.FlashLiquidate,
+                            params: {
+                                head: {
+                                    tokenIn: weth.address,
+                                    fee: "10000",
+                                    tokenOut: usdc.address,
+                                },
+                                tail: "0x",
                             },
-                            tail: "0x",
                         },
-                    },
-                    crvPool: {
                         [UST.address]: {
-                            uniPool: poolWethUsdc.address,
-                            crvPool: plain4Basic.address,
+                            method: LiquidationType.FlashLiquidateThroughCurve,
+                            params: {
+                                uniPool: poolWethUsdc.address,
+                            },
                         },
                     },
                 })
@@ -1000,7 +1007,7 @@ describe("Liquidator", () => {
                     // est. unrealizedPnl = (10 - 151.3733069) * 0.6606184541 = -93.3938154553
                     await makeAliceNonUsdCollateralLiquidatable("10")
 
-                    await liquidatorApp.tryLiquidate(alice.address)
+                    await liquidatorApp.liquidate(alice.address)
 
                     const usdcBalance = await usdc.balanceOf(liquidator.address)
                     expect(usdcBalance).to.be.gt(0)
@@ -1019,7 +1026,7 @@ describe("Liquidator", () => {
                     // est. unrealizedPnl = (10 - 151.3733069) * 0.6606184541 = -93.3938154553
                     await makeAliceNonUsdCollateralLiquidatable("10")
 
-                    await liquidatorApp.tryLiquidate(alice.address)
+                    await liquidatorApp.liquidate(alice.address)
 
                     const usdcBalance = await usdc.balanceOf(liquidator.address)
                     expect(usdcBalance).to.be.gt(0)
@@ -1035,7 +1042,7 @@ describe("Liquidator", () => {
 
                     const blockNumber = await waffle.provider.getBlockNumber()
                     // suppose to pass without any exception
-                    await liquidatorApp.tryLiquidate(alice.address)
+                    await liquidatorApp.liquidate(alice.address)
                     expect(await waffle.provider.getBlockNumber()).to.be.eq(blockNumber)
                 })
             })
@@ -1051,21 +1058,23 @@ describe("Liquidator", () => {
                     liquidatorContractAddr: liquidator.address,
                     maxSettlementTokenSpent: "100",
                     minSettlementTokenProfit: "1",
-                    uniPool: {
-                        // deliberately set to a unknown token
-                        "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef": {
-                            head: {
-                                tokenIn: "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-                                fee: "10000",
-                                tokenOut: usdc.address,
+                    pathMap: {
+                        "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeea": {
+                            method: LiquidationType.FlashLiquidate,
+                            params: {
+                                head: {
+                                    tokenIn: "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+                                    fee: "10000",
+                                    tokenOut: usdc.address,
+                                },
+                                tail: "0x",
                             },
-                            tail: "0x",
                         },
-                    },
-                    crvPool: {
-                        ["0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"]: {
-                            uniPool: "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-                            crvPool: "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+                        "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef": {
+                            method: LiquidationType.FlashLiquidateThroughCurve,
+                            params: {
+                                uniPool: "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+                            },
                         },
                     },
                 })
@@ -1081,7 +1090,7 @@ describe("Liquidator", () => {
 
                 const blockNumber = await waffle.provider.getBlockNumber()
                 // suppose to pass without any exception
-                await liquidatorApp.tryLiquidate(alice.address)
+                await liquidatorApp.liquidate(alice.address)
                 expect(await waffle.provider.getBlockNumber()).to.be.eq(blockNumber)
             })
         })

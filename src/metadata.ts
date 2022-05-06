@@ -8,44 +8,74 @@ export type Hop = {
     tokenOut: string
 }
 
+export type UniWay = {
+    method: LiquidationType.FlashLiquidate
+    params: {
+        head: Hop
+        tail: string
+    }
+}
+
+export type CrvWay = {
+    method: LiquidationType.FlashLiquidateThroughCurve
+    params: {
+        uniPool: string
+    }
+}
+
 export const chain = {
     optitmismEthereum: 10,
     optitmismKovan: 69,
 }
 
-export const optitmismEthereum = {
-    uniPool: {
-        // [mainMetadataOptimism.externalContracts.WBTC]: {
-        //     head: {
-        //         tokenIn: mainMetadataOptimism.externalContracts.WBTC,
-        //         fee: "3000",
-        //         tokenOut: mainMetadataOptimism.externalContracts.WETH,
-        //     },
-        //     tail: ethers.utils.solidityPack(
-        //         ["address", "uint24", "address"],
-        //         [mainMetadataOptimism.externalContracts.WETH, "3000", mainMetadataOptimism.externalContracts.USDC],
-        //     ),
-        // },
-        // [mainMetadataOptimism.externalContracts.WETH]: {
-        //     head: {
-        //         tokenIn: mainMetadataOptimism.externalContracts.WETH,
-        //         fee: "3000",
-        //         tokenOut: mainMetadataOptimism.externalContracts.USDC,
-        //     },
-        //     tail: "0x",
-        // },
-    },
-    crvPool: {
-        // [mainMetadataOptimism.externalContracts.UST]: {
-        //     uniPool: "0x0000000000000000000000000000000000000000",
-        //     crvPool: "0x0000000000000000000000000000000000000000",
-        // },
-    },
+export enum LiquidationType {
+    FlashLiquidate = "FlashLiquidate",
+    FlashLiquidateThroughCurve = "FlashLiquidateThroughCurve",
 }
 
-const optimismKovan = {
-    uniPool: {
-        [mainMetadataOptimismKovan.externalContracts.TestWBTC]: {
+export type Metadata = {
+    [key: string]: UniWay | CrvWay
+}
+
+export const optitmismEthereum: Metadata = {
+    // [mainMetadataOptimism.externalContracts.TestWBTC]: {
+    //     method: LiquidationType.FlashLiquidate,
+    //     params: {
+    //         head: {
+    //             tokenIn: mainMetadataOptimism.externalContracts.TestWBTC,
+    //             fee: "3000",
+    //             tokenOut: mainMetadataOptimism.externalContracts.TestUSDT,
+    //         },
+    //         tail: ethers.utils.solidityPack(
+    //             ["address", "uint24", "address"],
+    //             [
+    //                 mainMetadataOptimism.externalContracts.TestUSDT,
+    //                 "3000",
+    //                 mainMetadataOptimism.externalContracts.USDC,
+    //             ],
+    //         ),
+    //     },
+    // },
+    // [mainMetadataOptimism.externalContracts.TestUSDT]: {
+    //     method: LiquidationType.FlashLiquidate,
+    //     params: {
+    //         head: {
+    //             tokenIn: mainMetadataOptimism.externalContracts.TestUSDT,
+    //             fee: "3000",
+    //             tokenOut: mainMetadataOptimism.externalContracts.USDC,
+    //         },
+    //         tail: "0x",
+    //     },
+    // },
+    // [mainMetadataOptimism.externalContracts.UST]: {
+    //     method: LiquidationType.FlashLiquidateThroughCurve
+    // },
+}
+
+const optimismKovan: Metadata = {
+    [mainMetadataOptimismKovan.externalContracts.TestWBTC]: {
+        method: LiquidationType.FlashLiquidate,
+        params: {
             head: {
                 tokenIn: mainMetadataOptimismKovan.externalContracts.TestWBTC,
                 fee: "3000",
@@ -60,7 +90,10 @@ const optimismKovan = {
                 ],
             ),
         },
-        [mainMetadataOptimismKovan.externalContracts.TestUSDT]: {
+    },
+    [mainMetadataOptimismKovan.externalContracts.TestUSDT]: {
+        method: LiquidationType.FlashLiquidate,
+        params: {
             head: {
                 tokenIn: mainMetadataOptimismKovan.externalContracts.TestUSDT,
                 fee: "3000",
@@ -69,12 +102,12 @@ const optimismKovan = {
             tail: "0x",
         },
     },
-    crvPool: {
-        // [mainMetadataOptimismKovan.externalContracts.UST]: {
-        //     uniPool: "0x0000000000000000000000000000000000000000",
-        //     crvPool: "0x0000000000000000000000000000000000000000",
-        // },
-    },
+    // [mainMetadataOptimismKovan.externalContracts.UST]: {
+    //     method: LiquidationType.FlashLiquidateThroughCurve,
+    //     params: {
+    //         uniPool: "0x0000000000000000000000000000000000000000",
+    //     }
+    // },
 }
 
 export default {

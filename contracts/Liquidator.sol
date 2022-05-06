@@ -339,13 +339,13 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         return _vault;
     }
 
-    function findPoolForCoins(address from, uint256 targetIndex) external view returns (address) {
+    function findCurvePoolForCoins(address from, uint256 iteration) external view returns (address) {
         uint256 index = 0;
         uint256 largestBalance = 0;
         address targetPool = address(0x0);
         IFactorySidechains factory = IFactorySidechains(_crvFactory);
 
-        while (index < targetIndex) {
+        while (index < iteration) {
             address pool = factory.find_pool_for_coins(from, _settlementToken, index);
 
             (int128 fromIndex, , bool isUnderlying) = factory.get_coin_indices(pool, from, _settlementToken);

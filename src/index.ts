@@ -26,8 +26,7 @@ async function main(): Promise<void> {
         liquidatorContractAddr: process.env.LIQUIDATOR_CONTRACT,
         maxSettlementTokenSpent: process.env.MAX_SETTLEMENT_TOKEN_SPENT,
         minSettlementTokenProfit: process.env.MIN_SETTLEMENT_TOKEN_PROFIT,
-        uniPool: allMetadata[process.env.NETWORK].uniPool,
-        crvPool: allMetadata[process.env.NETWORK].crvPool,
+        pathMap: allMetadata[process.env.NETWORK],
     })
     await liquidator.start()
 }
