@@ -426,9 +426,6 @@ describe("Liquidator", () => {
             // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8) * 0.75 = 90
             await mintAndDeposit(fixture, alice, 1, weth)
             await mintAndDeposit(fixture, alice, 0.05, wbtc)
-
-            // prepare to manipulate the spot price
-            await weth.mint(carol.address, parseEther("1000"))
         })
 
         describe("trader collateral is liquidatable", () => {
@@ -446,10 +443,10 @@ describe("Liquidator", () => {
                 // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
                 // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
                 // for ETH:
-                //   maxCollateralTokenOut = 48.1411419873 / (100 * (1 - 0.1)) = 0.5349015776
-                //   maxSettlementTokenIn = 0.5349015776 * (100 * (1 - 0.1)) = 48.141141984
-                //   actualSettlementTokenIn = min(48.141141984, 100) = 48.141141984
-                //   actualCollateralTokenOut = 48.141141984 / (100 * (1 - 0.1)) = 0.5349015776
+                //   maxLiquidatableCollateral = 48.1411419873 / (100 * (1 - 0.1)) = 0.5349015776
+                //   maxRepaidSettlement = 0.5349015776 * (100 * (1 - 0.1)) = 48.141141984
+                //   actualRepaidSettlement = min(48.141141984, 100) = 48.141141984
+                //   actualLiquidatableCollateral = 48.141141984 / (100 * (1 - 0.1)) = 0.5349015776
                 //   est. profit (without slippage) = 0.5349015776 * 100 - 48.141141984 = 5.349015776
                 await liquidator.flashLiquidate(
                     alice.address,
@@ -460,7 +457,6 @@ describe("Liquidator", () => {
                 )
 
                 const usdcBalance = await usdc.balanceOf(liquidator.address)
-
                 expect(usdcBalance).to.be.gt(0)
             })
 
@@ -469,10 +465,10 @@ describe("Liquidator", () => {
                 // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
                 // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
                 // for ETH:
-                //   maxCollateralTokenOut = 48.1411419873 / (100 * (1 - 0.1)) = 0.5349015776
-                //   maxSettlementTokenIn = 0.5349015776 * (100 * (1 - 0.1)) = 48.141141984
-                //   actualSettlementTokenIn = min(48.141141984, 1) = 1
-                //   actualCollateralTokenOut = 1 / (100 * (1 - 0.1)) = 0.01111111111
+                //   maxLiquidatableCollateral = 48.1411419873 / (100 * (1 - 0.1)) = 0.5349015776
+                //   maxRepaidSettlement = 0.5349015776 * (100 * (1 - 0.1)) = 48.141141984
+                //   actualRepaidSettlement = min(48.141141984, 1) = 1
+                //   actualLiquidatableCollateral = 1 / (100 * (1 - 0.1)) = 0.01111111111
                 //   est. profit (without slippage) = 0.01111111111 * 100 - 1 = 0.111111111
                 await liquidator.flashLiquidate(
                     alice.address,
@@ -489,10 +485,10 @@ describe("Liquidator", () => {
                 // maxRepayNotional = (93.3938154553 - 1) * 0.5 = 46.1969077277
                 // maxRepayNotionalAndIFFee = 46.1969077277 / (1 - 0.03) = 47.6256780698
                 // for ETH:
-                //   maxCollateralTokenOut = 47.6256780698 / (100 * (1 - 0.1)) = 0.5291742008
-                //   maxSettlementTokenIn = 0.5291742008 * (100 * (1 - 0.1)) = 47.625678072
-                //   actualSettlementTokenIn = min(47.625678072, 1) = 1
-                //   actualCollateralTokenOut = 1 / (100 * (1 - 0.1)) = 0.01111111111
+                //   maxLiquidatableCollateral = 47.6256780698 / (100 * (1 - 0.1)) = 0.5291742008
+                //   maxRepaidSettlement = 0.5291742008 * (100 * (1 - 0.1)) = 47.625678072
+                //   actualRepaidSettlement = min(47.625678072, 1) = 1
+                //   actualLiquidatableCollateral = 1 / (100 * (1 - 0.1)) = 0.01111111111
                 //   est. profit (without slippage) = 0.01111111111 * 100 - 1 = 0.111111111
                 await liquidator.flashLiquidate(
                     alice.address,
@@ -511,10 +507,10 @@ describe("Liquidator", () => {
                 // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
                 // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
                 // for BTC:
-                //   maxCollateralTokenOut = min(48.1411419873 / (1000 * (1 - 0.1)), 0.05) = 0.05
-                //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
-                //   actualSettlementTokenIn = min(45, 100) = 45
-                //   actualCollateralTokenOut = 45 / (1000 * (1 - 0.1)) = 0.05
+                //   maxLiquidatableCollateral = min(48.1411419873 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                //   maxRepaidSettlement = 0.05 * (1000 * (1 - 0.1)) = 45
+                //   actualRepaidSettlement = min(45, 100) = 45
+                //   actualLiquidatableCollateral = 45 / (1000 * (1 - 0.1)) = 0.05
                 //   est. profit (without slippage) = 0.05 * 1000 - 45 = 5
                 await liquidator.flashLiquidate(
                     alice.address,
@@ -536,10 +532,10 @@ describe("Liquidator", () => {
                 // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
                 // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
                 // for BTC:
-                //   maxCollateralTokenOut = min(48.1411419873 / (1000 * (1 - 0.1)), 0.05) = 0.05
-                //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
-                //   actualSettlementTokenIn = min(45, 1) = 1
-                //   actualCollateralTokenOut = 1 / (1000 * (1 - 0.1)) = 0.001111111111
+                //   maxLiquidatableCollateral = min(48.1411419873 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                //   maxRepaidSettlement = 0.05 * (1000 * (1 - 0.1)) = 45
+                //   actualRepaidSettlement = min(45, 1) = 1
+                //   actualLiquidatableCollateral = 1 / (1000 * (1 - 0.1)) = 0.001111111111
                 //   est. profit (without slippage) = 0.001111111111 * 1000 - 1 = 0.111111111
                 await liquidator.flashLiquidate(
                     alice.address,
@@ -559,10 +555,10 @@ describe("Liquidator", () => {
                 // maxRepayNotional = (93.3938154553 - 1) * 0.5 = 46.1969077277
                 // maxRepayNotionalAndIFFee = 46.1969077277 / (1 - 0.03) = 47.6256780698
                 // for BTC:
-                //   maxCollateralTokenOut = min(47.6256780698 / (1000 * (1 - 0.1)), 0.05) = 0.05
-                //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
-                //   actualSettlementTokenIn = min(45, 1) = 1
-                //   actualCollateralTokenOut = 1 / (1000 * (1 - 0.1)) = 0.001111111111
+                //   maxLiquidatableCollateral = min(47.6256780698 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                //   maxRepaidSettlement = 0.05 * (1000 * (1 - 0.1)) = 45
+                //   actualRepaidSettlement = min(45, 1) = 1
+                //   actualLiquidatableCollateral = 1 / (1000 * (1 - 0.1)) = 0.001111111111
                 //   est. profit (without slippage) = 0.001111111111 * 1000 - 1 = 0.111111111
                 await liquidator.flashLiquidate(
                     alice.address,
@@ -581,6 +577,8 @@ describe("Liquidator", () => {
 
             describe("non-profitable swap", () => {
                 beforeEach(async () => {
+                    // prepare to manipulate the spot price
+                    await weth.mint(carol.address, parseEther("1000"))
                     // manipulate ETH-USDC spot price so the trade is no longer profitable
                     await uniV3Callee
                         .connect(carol)
@@ -599,8 +597,8 @@ describe("Liquidator", () => {
                     // maxRepayNotional = 90.193584 * 0.5 = 45.096792
                     // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
                     // for ETH:
-                    //   maxCollateralTokenOut = 46.4915381443 / (100 * (1 - 0.1)) = 0.516572646
-                    //   maxSettlementTokenIn = 0.516572646 * (100 * (1 - 0.1)) = 46.49153814
+                    //   maxLiquidatableCollateral = 46.4915381443 / (100 * (1 - 0.1)) = 0.516572646
+                    //   maxRepaidSettlement = 0.516572646 * (100 * (1 - 0.1)) = 46.49153814
                     //   est. profit (without slippage) = 0.516572646 * 75 - 46.49153814 = -7.74858969
                     const usdcBalanceBefore = await usdc.balanceOf(liquidator.address)
 
@@ -621,8 +619,8 @@ describe("Liquidator", () => {
                     // maxRepayNotional = 90.193584 * 0.5 = 45.096792
                     // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
                     // for BTC:
-                    //   maxCollateralTokenOut = min(46.4915381443 / (1000 * (1 - 0.1)), 0.05) = 0.05
-                    //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
+                    //   maxLiquidatableCollateral = min(46.4915381443 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                    //   maxRepaidSettlement = 0.05 * (1000 * (1 - 0.1)) = 45
                     //   est. profit (without slippage) = 0.05 * 1000 * 0.75 - 45 = -7.5
                     const usdcBalanceBefore = await usdc.balanceOf(liquidator.address)
 
@@ -646,8 +644,8 @@ describe("Liquidator", () => {
                     // maxRepayNotional = 90.193584 * 0.5 = 45.096792
                     // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
                     // for ETH:
-                    //   maxCollateralTokenOut = 46.4915381443 / (100 * (1 - 0.1)) = 0.516572646
-                    //   maxSettlementTokenIn = 0.516572646 * (100 * (1 - 0.1)) = 46.49153814
+                    //   maxLiquidatableCollateral = 46.4915381443 / (100 * (1 - 0.1)) = 0.516572646
+                    //   maxRepaidSettlement = 0.516572646 * (100 * (1 - 0.1)) = 46.49153814
                     //   est. profit (without slippage) = 0.516572646 * 75 - 46.49153814 = -7.74858969
                     await expect(
                         liquidator.flashLiquidate(
@@ -665,8 +663,8 @@ describe("Liquidator", () => {
                     // maxRepayNotional = 90.193584 * 0.5 = 45.096792
                     // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
                     // for BTC:
-                    //   maxCollateralTokenOut = min(46.4915381443 / (1000 * (1 - 0.1)), 0.05) = 0.05
-                    //   maxSettlementTokenIn = 0.05 * (1000 * (1 - 0.1)) = 45
+                    //   maxLiquidatableCollateral = min(46.4915381443 / (1000 * (1 - 0.1)), 0.05) = 0.05
+                    //   maxRepaidSettlement = 0.05 * (1000 * (1 - 0.1)) = 45
                     //   est. profit (without slippage) = 0.05 * 1000 * 0.75 - 45 = -7.5
                     await expect(
                         liquidator.flashLiquidate(
@@ -718,13 +716,10 @@ describe("Liquidator", () => {
 
     describe("flashLiquidateThroughCurve", () => {
         beforeEach(async () => {
-            // Alice has 1 eth and 0.05 btc:
+            // Alice has 100 ust and 0.05 btc:
             // non-settlement value threshold: (100 * 1 * 0.8 + 1000 * 0.05 * 0.8) * 0.75 = 90
             await mintAndDeposit(fixture, alice, 100, UST)
             await mintAndDeposit(fixture, alice, 0.05, wbtc)
-
-            // prepare to manipulate the spot price
-            await weth.mint(carol.address, parseEther("1000"))
         })
 
         describe("trader collateral is liquidatable", () => {
@@ -742,10 +737,10 @@ describe("Liquidator", () => {
                 // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
                 // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
                 // for UST:
-                //   maxCollateralTokenOut = 48.1411419873 / (1 * (1 - 0.1)) = 53.4901577637
-                //   maxSettlementTokenIn = 53.4901577637 * (1 * (1 - 0.1)) = 48.1411419873
-                //   actualSettlementTokenIn = min(48.1411419873, 100) = 48.1411419873
-                //   actualCollateralTokenOut = 48.1411419873 / (1 * (1 - 0.1)) = 53.4901577637
+                //   maxLiquidatableCollateral = 48.1411419873 / (1 * (1 - 0.1)) = 53.4901577637
+                //   maxRepaidSettlement = 53.4901577637 * (1 * (1 - 0.1)) = 48.1411419873
+                //   actualRepaidSettlement = min(48.1411419873, 100) = 48.1411419873
+                //   actualLiquidatableCollateral = 48.1411419873 / (1 * (1 - 0.1)) = 53.4901577637
                 //   est. profit (without slippage) = 53.4901577637 * 1 - 48.141141984 = 5.3490157797
                 await liquidator.flashLiquidateThroughCurve({
                     trader: alice.address,
@@ -757,7 +752,6 @@ describe("Liquidator", () => {
                 })
 
                 const usdcBalance = await usdc.balanceOf(liquidator.address)
-
                 expect(usdcBalance).to.be.gt(0)
             })
 
@@ -766,10 +760,10 @@ describe("Liquidator", () => {
                 // maxRepayNotional = 93.3938154553 * 0.5 = 46.6969077277
                 // maxRepayNotionalAndIFFee = 46.6969077277 / (1 - 0.03) = 48.1411419873
                 // for UST:
-                //   maxCollateralTokenOut = 48.1411419873 / (1 * (1 - 0.1)) = 53.4901577637
-                //   maxSettlementTokenIn = 53.4901577637 * (1 * (1 - 0.1)) = 48.1411419873
-                //   actualSettlementTokenIn = min(48.1411419873, 1) = 1
-                //   actualCollateralTokenOut = 1 / (1 * (1 - 0.1)) = 1.1111111111
+                //   maxLiquidatableCollateral = 48.1411419873 / (1 * (1 - 0.1)) = 53.4901577637
+                //   maxRepaidSettlement = 53.4901577637 * (1 * (1 - 0.1)) = 48.1411419873
+                //   actualRepaidSettlement = min(48.1411419873, 1) = 1
+                //   actualLiquidatableCollateral = 1 / (1 * (1 - 0.1)) = 1.1111111111
                 //   est. profit (without slippage) = 1.1111111111 * 1 - 1 = 0.111111111
                 await liquidator.flashLiquidateThroughCurve({
                     trader: alice.address,
@@ -787,10 +781,10 @@ describe("Liquidator", () => {
                 // maxRepayNotional = (93.3938154553 - 1) * 0.5 = 46.1969077277
                 // maxRepayNotionalAndIFFee = 46.1969077277 / (1 - 0.03) = 47.6256780698
                 // for UST:
-                //   maxCollateralTokenOut = 47.6256780698 / (1 * (1 - 0.1)) = 52.9174200776
-                //   maxSettlementTokenIn = 52.9174200776 * (1 * (1 - 0.1)) = 47.6256780698
-                //   actualSettlementTokenIn = min(47.6256780698, 1) = 1
-                //   actualCollateralTokenOut = 1 / (1 * (1 - 0.1)) = 1.1111111111
+                //   maxLiquidatableCollateral = 47.6256780698 / (1 * (1 - 0.1)) = 52.9174200776
+                //   maxRepaidSettlement = 52.9174200776 * (1 * (1 - 0.1)) = 47.6256780698
+                //   actualRepaidSettlement = min(47.6256780698, 1) = 1
+                //   actualLiquidatableCollateral = 1 / (1 * (1 - 0.1)) = 1.1111111111
                 //   est. profit (without slippage) = 1.1111111111 * 1 - 1 = 0.111111111
                 await liquidator.flashLiquidateThroughCurve({
                     trader: alice.address,
@@ -828,21 +822,10 @@ describe("Liquidator", () => {
                     // maxRepayNotional = 90.193584 * 0.5 = 45.096792
                     // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
                     // for UST:
-                    //   maxCollateralTokenOut = 46.4915381443 / (1 * (1 - 0.1)) = 51.6572646048
-                    //   maxSettlementTokenIn = 51.6572646048 * (1 * (1 - 0.1)) = 46.4915381443
+                    //   maxLiquidatableCollateral = 46.4915381443 / (1 * (1 - 0.1)) = 51.6572646048
+                    //   maxRepaidSettlement = 51.6572646048 * (1 * (1 - 0.1)) = 46.4915381443
                     //   est. profit (without slippage) = 51.6572646048 * 0.002196 - 46.4915381443 = -46.3780987912
                     const usdcBalanceBefore = await usdc.balanceOf(liquidator.address)
-
-                    await expect(
-                        liquidator.flashLiquidateThroughCurve({
-                            trader: alice.address,
-                            maxSettlementTokenSpent: parseUnits("100", usdcDecimals),
-                            minSettlementTokenProfit: parseUnits("0", usdcDecimals),
-                            uniPool: poolWethUsdc.address,
-                            crvPool: plain4Basic.address,
-                            token: UST.address,
-                        }),
-                    ).to.be.revertedWith("Exchange resulted in fewer coins than expected")
 
                     await liquidator.flashLiquidateThroughCurve({
                         trader: alice.address,
@@ -864,8 +847,8 @@ describe("Liquidator", () => {
                     // maxRepayNotional = 90.193584 * 0.5 = 45.096792
                     // maxRepayNotionalAndIFFee = 45.096792 / (1 - 0.03) = 46.4915381443
                     // for UST:
-                    //   maxCollateralTokenOut = 46.4915381443 / (1 * (1 - 0.1)) = 51.6572646048
-                    //   maxSettlementTokenIn = 51.6572646048 * (1 * (1 - 0.1)) = 46.4915381443
+                    //   maxLiquidatableCollateral = 46.4915381443 / (1 * (1 - 0.1)) = 51.6572646048
+                    //   maxRepaidSettlement = 51.6572646048 * (1 * (1 - 0.1)) = 46.4915381443
                     //   est. profit (without slippage) = 51.6572646048 * 0.002196 - 46.4915381443 = -46.3780987912
                     await expect(
                         liquidator.flashLiquidateThroughCurve({
