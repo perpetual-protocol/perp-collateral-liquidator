@@ -18,7 +18,7 @@ interface IFactorySidechains {
 
     function get_decimals(address pool) external view returns (uint256[] memory);
 
-    function get_balances(address pool) external view returns (uint256[] memory);
+    function get_balances(address pool) external view returns (uint256[4] memory);
 
     function get_underlying_balances(address pool) external view returns (uint256[] memory);
 

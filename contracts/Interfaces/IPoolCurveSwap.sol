@@ -16,4 +16,6 @@ interface IPoolCurveSwap {
         uint256 amount,
         uint256 minAmount
     ) external returns (uint256);
+
+    function balances(uint256 idx) external view returns (uint256);
 }

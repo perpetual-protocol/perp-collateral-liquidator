@@ -348,13 +348,17 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         while (index < iteration) {
             address pool = factory.find_pool_for_coins(from, _settlementToken, index);
 
-            (int128 fromIndex, , bool isUnderlying) = factory.get_coin_indices(pool, from, _settlementToken);
+            if (pool == address(0x0)) {
+                break;
+            }
 
+            (int128 fromIndex, , bool isUnderlying) = factory.get_coin_indices(pool, from, _settlementToken);
             uint256 tmpBalance = 0;
             if (isUnderlying) {
                 tmpBalance = factory.get_underlying_balances(pool)[fromIndex.toUint256()];
             } else {
-                tmpBalance = factory.get_balances(pool)[fromIndex.toUint256()];
+                uint256[4] memory balances = factory.get_balances(pool);
+                tmpBalance = balances[0];
             }
 
             if (tmpBalance > largestBalance) {

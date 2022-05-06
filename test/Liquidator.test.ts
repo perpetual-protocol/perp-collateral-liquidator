@@ -299,6 +299,16 @@ describe("Liquidator", () => {
         })
     })
 
+    describe("findCurvePoolForCoins", () => {
+        it("should get the pool correctly", async () => {
+            const poolAddress = await liquidator.findCurvePoolForCoins(UST.address, 10)
+            expect(poolAddress).to.eq(plain4Basic.address)
+
+            const poolAddressZero = await liquidator.findCurvePoolForCoins(wbtc.address, 10)
+            expect(poolAddressZero).to.eq(ethers.constants.AddressZero)
+        })
+    })
+
     describe("getMaxProfitableCollateralFromCollaterals", () => {
         describe("no collaterals", () => {
             it("get the correct collateral", async () => {
