@@ -61,6 +61,12 @@ Prerequisite:
 3. fill all of the fields
 
 ```bash
+# build contract
+npm run build:contract
+
+# generate types
+npm run typechain
+
 # on Optimism Kovan (testnet)
 npm run app:optimism-kovan
 

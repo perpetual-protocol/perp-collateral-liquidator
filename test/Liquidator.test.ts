@@ -1003,7 +1003,7 @@ describe("Liquidator", () => {
                 })
             })
 
-            it("trader collateral is liquidatable", () => {
+            describe("trader collateral is liquidatable", () => {
                 it("flashLiquidate", async () => {
                     // Alice has 1 eth and 0.05 btc:
                     // non-settlement value threshold: (1 * 100 * 0.8 + 0.05 * 1000 * 0.8) * 0.75 = 90
@@ -1016,11 +1016,10 @@ describe("Liquidator", () => {
                     // v < 151.3733069 - 90 / 0.6606184541 = 15.1373306849
                     // est. unrealizedPnl = (10 - 151.3733069) * 0.6606184541 = -93.3938154553
                     await makeAliceNonUsdCollateralLiquidatable("10")
-
+                    const usdcBalanceBefore = await usdc.balanceOf(liquidator.address)
                     await liquidatorApp.liquidate(alice.address)
-
-                    const usdcBalance = await usdc.balanceOf(liquidator.address)
-                    expect(usdcBalance).to.be.gt(0)
+                    const usdcBalanceAfter = await usdc.balanceOf(liquidator.address)
+                    expect(usdcBalanceAfter).to.be.gt(usdcBalanceBefore)
                 })
 
                 it("flashLiquidateThroughCurve", async () => {
@@ -1035,11 +1034,10 @@ describe("Liquidator", () => {
                     // v < 151.3733069 - 90 / 0.6606184541 = 15.1373306849
                     // est. unrealizedPnl = (10 - 151.3733069) * 0.6606184541 = -93.3938154553
                     await makeAliceNonUsdCollateralLiquidatable("10")
-
+                    const usdcBalanceBefore = await usdc.balanceOf(liquidator.address)
                     await liquidatorApp.liquidate(alice.address)
-
-                    const usdcBalance = await usdc.balanceOf(liquidator.address)
-                    expect(usdcBalance).to.be.gt(0)
+                    const usdcBalanceAfter = await usdc.balanceOf(liquidator.address)
+                    expect(usdcBalanceAfter).to.be.gt(usdcBalanceBefore)
                 })
             })
 

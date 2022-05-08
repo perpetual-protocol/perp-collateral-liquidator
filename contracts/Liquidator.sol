@@ -344,7 +344,6 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         uint256 largestBalance = 0;
         address targetPool = address(0x0);
         IFactorySidechains factory = IFactorySidechains(_crvFactory);
-
         while (index < iteration) {
             address pool = factory.find_pool_for_coins(from, _settlementToken, index);
 
