@@ -55,6 +55,9 @@ async function main() {
         `${cwd}/typechain/factories/StableSwap__factory.ts`,
         `${cwd}/typechain/factories/Plain4Basic__factory.ts`,
         `${cwd}/typechain/factories/FactorySidechains__factory.ts`,
+        `${cwd}/typechain/factories/Registry__factory.ts`,
+        `${cwd}/typechain/factories/RegistryAddressProvider__factory.ts`,
+        `${cwd}/typechain/factories/StableSwap3Pool__factory.ts`,
     ]
 
     for (let i = 0; i < targetNoCheckFiles.length; i++) {

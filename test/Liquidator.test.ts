@@ -5,16 +5,15 @@ import { parseEther, parseUnits } from "ethers/lib/utils"
 import { ethers, waffle } from "hardhat"
 import { Liquidator as LiquidatorApp } from "../src/liquidator"
 import { LiquidationType } from "../src/metadata"
-import { FactorySidechains, Liquidator, Plain4Basic, TestUniswapV3Callee } from "../typechain"
 import {
-    AccountBalance,
-    BaseToken,
-    ClearingHouse,
-    Exchange,
-    MarketRegistry,
-    TestAggregatorV3,
-    Vault,
-} from "../typechain/perp-curie"
+    FactorySidechains,
+    Liquidator,
+    Plain4Basic,
+    Registry,
+    StableSwap3Pool,
+    TestUniswapV3Callee,
+} from "../typechain"
+import { BaseToken, ClearingHouse, Exchange, MarketRegistry, TestAggregatorV3, Vault } from "../typechain/perp-curie"
 import { TestERC20 } from "../typechain/test"
 import { UniswapV3Pool } from "../typechain/uniswap-v3-core"
 import { createFixture, Fixture } from "./fixtures"
@@ -32,7 +31,6 @@ describe("Liquidator", () => {
     let vault: Vault
     let clearingHouse: ClearingHouse
     let exchange: Exchange
-    let accountBalance: AccountBalance
     let pool: UniswapV3Pool
     let marketRegistry: MarketRegistry
     let baseToken: BaseToken
@@ -51,7 +49,9 @@ describe("Liquidator", () => {
     let poolWbtcWeth: UniswapV3Pool
     let uniV3Callee: TestUniswapV3Callee
     let plain4Basic: Plain4Basic
+    let stableSwap3Pool: StableSwap3Pool
     let factorySidechains: FactorySidechains
+    let curveRegistry: Registry
 
     function setPoolIndexPrice(price: BigNumberish) {
         const oracleDecimals = 6
@@ -129,7 +129,6 @@ describe("Liquidator", () => {
         vault = fixture.vault
         clearingHouse = fixture.clearingHouse
         exchange = fixture.exchange
-        accountBalance = fixture.accountBalance
         baseToken = fixture.baseToken
         mockedBaseAggregator = fixture.mockedBaseAggregator
         marketRegistry = fixture.marketRegistry
@@ -137,7 +136,9 @@ describe("Liquidator", () => {
         liquidator = fixture.liquidator
         uniV3Callee = fixture.uniV3Callee
         plain4Basic = fixture.plain4Basic
+        stableSwap3Pool = fixture.stableSwap3Pool
         factorySidechains = fixture.factorySidechains
+        curveRegistry = fixture.curveRegistry
         UST = fixture.UST
         FRAX = fixture.FRAX
         USDT = fixture.USDT
@@ -299,15 +300,52 @@ describe("Liquidator", () => {
         })
     })
 
-    describe("findCurveFactoryAndPoolForCoins", () => {
-        it("should get the pool correctly", async () => {
-            const [factoryAddress, poolAddress] = await liquidator.findCurveFactoryAndPoolForCoins(UST.address)
-            expect(factoryAddress).to.eq(factorySidechains.address)
-            expect(poolAddress).to.eq(plain4Basic.address)
+    describe.only("findCurveFactoryAndPoolForCoins", () => {
+        describe("get the factory and pool correctly", () => {
+            it("from factory", async () => {
+                const [factoryAddress, poolAddress] = await liquidator.findCurveFactoryAndPoolForCoins(UST.address)
 
-            const [factoryAddressZero, poolAddressZero] = await liquidator.findCurveFactoryAndPoolForCoins(wbtc.address)
-            expect(factoryAddressZero).to.eq(ethers.constants.AddressZero)
-            expect(poolAddressZero).to.eq(ethers.constants.AddressZero)
+                expect(factoryAddress).to.eq(factorySidechains.address)
+                expect(poolAddress).to.eq(plain4Basic.address)
+            })
+
+            it("from registry", async () => {
+                const usdcTwoMillion = parseUnits("2000000", 6)
+                const usdtTwoMillion = parseUnits("2000000", 6)
+                const fraxTwoMillion = parseUnits("2000000", 18)
+
+                await usdc.mint(carol.address, usdcTwoMillion)
+                await USDT.mint(carol.address, usdtTwoMillion)
+                await FRAX.mint(carol.address, fraxTwoMillion)
+
+                await usdc.connect(carol).approve(stableSwap3Pool.address, usdcTwoMillion)
+                await USDT.connect(carol).approve(stableSwap3Pool.address, usdtTwoMillion)
+                await FRAX.connect(carol).approve(stableSwap3Pool.address, fraxTwoMillion)
+
+                console.log(`usdc ${usdc.address}`)
+                console.log(`frax ${FRAX.address}`)
+                console.log(`USDT ${USDT.address}`)
+                console.log(`carol ${carol.address}`)
+                console.log(`stableSwap3Pool ${stableSwap3Pool.address}`)
+
+                await stableSwap3Pool.connect(carol)["add_liquidity(uint256[3],uint256)"]([usdcTwoMillion, 1, 0], 0)
+
+                const usdcamount = await usdc.balanceOf(stableSwap3Pool.address)
+                const usdtamount = await USDT.balanceOf(stableSwap3Pool.address)
+                console.log(`usdc amount: ${usdcamount} , usdt amount: ${usdtamount}`)
+
+                const [factoryAddress, poolAddress] = await liquidator.findCurveFactoryAndPoolForCoins(USDT.address)
+                expect(factoryAddress).to.eq(curveRegistry.address)
+                expect(poolAddress).to.eq(stableSwap3Pool.address)
+            })
+
+            it("when a token is not exist", async () => {
+                const [factoryAddressZero, poolAddressZero] = await liquidator.findCurveFactoryAndPoolForCoins(
+                    wbtc.address,
+                )
+                expect(factoryAddressZero).to.eq(ethers.constants.AddressZero)
+                expect(poolAddressZero).to.eq(ethers.constants.AddressZero)
+            })
         })
     })
 

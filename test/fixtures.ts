@@ -1,7 +1,14 @@
 import { FakeContract } from "@defi-wonderland/smock"
 import { parseEther, parseUnits } from "ethers/lib/utils"
-import { ethers } from "hardhat"
-import { FactorySidechains, Liquidator, Plain4Basic, TestUniswapV3Callee } from "../typechain"
+import { ethers, waffle } from "hardhat"
+import {
+    FactorySidechains,
+    Liquidator,
+    Plain4Basic,
+    Registry,
+    StableSwap3Pool,
+    TestUniswapV3Callee,
+} from "../typechain"
 import {
     AccountBalance,
     BaseToken,
@@ -48,6 +55,8 @@ export interface Fixture {
     uniV3Callee: TestUniswapV3Callee
     factorySidechains: FactorySidechains
     plain4Basic: Plain4Basic
+    stableSwap3Pool: StableSwap3Pool
+    curveRegistry: Registry
     clearingHouse: ClearingHouse
     orderBook: OrderBook
     accountBalance: AccountBalance
@@ -73,6 +82,9 @@ export function createFixture(): () => Promise<Fixture> {
         // ======================================
         // deploy common
         //
+
+        const [admin] = waffle.provider.getWallets()
+
         const uniFeeTier = 10000 // 1%
 
         const weth9Factory = await ethers.getContractFactory("WETH9")
@@ -100,6 +112,13 @@ export function createFixture(): () => Promise<Fixture> {
         // ======================================
         // deploy Curve ecosystem
         //
+
+        const registryAddressProviderFactory = await ethers.getContractFactory("RegistryAddressProvider")
+        const registryAddressProvider = await registryAddressProviderFactory.deploy(admin.address)
+
+        const curveRegistryFactory = await ethers.getContractFactory("Registry")
+        const curveRegistry = (await curveRegistryFactory.deploy(registryAddressProvider.address)) as Registry
+        console.log(`curveRegistry ${curveRegistry.address}`)
         const factorySidechainsFactory = await ethers.getContractFactory("FactorySidechains")
         const factorySidechains = (await factorySidechainsFactory.deploy(
             "0x0000000000000000000000000000000000000001",
@@ -137,6 +156,26 @@ export function createFixture(): () => Promise<Fixture> {
             USDC.address,
         )
         const plain4Basic = (await ethers.getContractAt("Plain4Basic", poolUstUsdcAddr)) as Plain4Basic
+
+        const stableSwap3PoolFactory = await ethers.getContractFactory("StableSwap3Pool")
+        const stableSwap3Pool = (await stableSwap3PoolFactory.deploy(
+            [USDC.address, USDT.address, FRAX.address],
+            200,
+            4000000,
+            0,
+            "3pool",
+            "3pool",
+        )) as StableSwap3Pool
+
+        await curveRegistry.add_pool_without_underlying(
+            stableSwap3Pool.address,
+            3,
+            stableSwap3Pool.address,
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            0,
+            0,
+            "3pool",
+        )
 
         // ======================================
         // deploy UniV3 ecosystem
@@ -305,7 +344,7 @@ export function createFixture(): () => Promise<Fixture> {
         const liquidatorFactory = await ethers.getContractFactory("Liquidator")
         const liquidator = (await liquidatorFactory.deploy(vault.address, uniV3Router.address, [
             factorySidechains.address,
-            factorySidechains.address, // TODO: should change to Registry
+            curveRegistry.address,
         ])) as Liquidator
 
         return {
@@ -326,6 +365,8 @@ export function createFixture(): () => Promise<Fixture> {
             uniV3Callee,
             factorySidechains,
             plain4Basic,
+            stableSwap3Pool,
+            curveRegistry,
             clearingHouse,
             orderBook,
             accountBalance,

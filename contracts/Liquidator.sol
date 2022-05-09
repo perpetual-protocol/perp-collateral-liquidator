@@ -20,6 +20,7 @@ import { ICollateralManager } from "@perp/curie-contract/contracts/interface/ICo
 import { IPoolCurveSwap } from "./Interfaces/IPoolCurveSwap.sol";
 import { IFactorySidechains } from "./Interfaces/IFactorySidechains.sol";
 import { PerpSafeCast } from "./lib/PerpSafeCast.sol";
+import "hardhat/console.sol";
 
 contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable {
     using SafeMath for uint256;
@@ -351,10 +352,12 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         for (uint256 i = 0; i < _crvFactories.length; i++) {
             IFactorySidechains factory = IFactorySidechains(_crvFactories[i]);
             uint256 iteration = factory.pool_count();
+            console.log("iteration: ", iteration);
 
             while (index < iteration) {
                 address pool = factory.find_pool_for_coins(from, _settlementToken, index);
-
+                console.log("index", index);
+                console.log("pool", pool);
                 if (pool == address(0x0)) {
                     break;
                 }
