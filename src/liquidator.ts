@@ -207,7 +207,7 @@ export class Liquidator {
                     ethers.utils.parseUnits(this.config.minSettlementTokenProfit, this.settlementTokenDecimals),
                     pathMapParams.head,
                     pathMapParams.tail,
-                    { gasLimit: 30_000_000 },
+                    { gasLimit: 15_000_000 },
                 ]
 
                 try {
@@ -273,7 +273,7 @@ export class Liquidator {
                         ),
                         token: targetCollateralAddress,
                     },
-                    { gasLimit: 30_000_000 },
+                    { gasLimit: 15_000_000 },
                 ]
 
                 try {
