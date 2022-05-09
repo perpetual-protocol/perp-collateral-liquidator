@@ -249,7 +249,9 @@ export class Liquidator {
                 break
             }
             case LiquidationType.FlashLiquidateThroughCurve: {
-                const targetPoolAddress = await this.contract.findCurvePoolForCoins(targetCollateralAddress, 10)
+                const [targetFactoryAddress, targetPoolAddress] = await this.contract.findCurveFactoryAndPoolForCoins(
+                    targetCollateralAddress,
+                )
 
                 if (targetPoolAddress === ethers.constants.AddressZero) {
                     const error = new CustomError(`NoLiquidCurvePoolFound`, {
@@ -261,6 +263,7 @@ export class Liquidator {
                 const params: Parameters<typeof this.contract.callStatic.flashLiquidateThroughCurve> = [
                     {
                         trader: account,
+                        crvFactory: targetFactoryAddress,
                         crvPool: targetPoolAddress,
                         uniPool: pathMapParams.uniPool,
                         maxSettlementTokenSpent: ethers.utils.parseUnits(

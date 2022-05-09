@@ -106,6 +106,7 @@ const optimismKovan: Metadata = {
     //     method: LiquidationType.FlashLiquidateThroughCurve,
     //     params: {
     //         uniPool: "0x0000000000000000000000000000000000000000",
+    //         crvFactory: "0x0000000000000000000000000000000000000000",
     //     }
     // },
 }

@@ -29,4 +29,6 @@ interface IFactorySidechains {
         address to,
         uint256 index
     ) external view returns (address);
+
+    function pool_count() external view returns (uint256);
 }

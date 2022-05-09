@@ -39,6 +39,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
 
     struct FlashCallbackData {
         address trader;
+        address crvFactory;
         address crvPool;
         address token;
         uint256 settlementAmount;
@@ -57,6 +58,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         uint256 maxSettlementTokenSpent;
         int256 minSettlementTokenProfit;
         address uniPool;
+        address crvFactory;
         address crvPool;
         address token;
     }
@@ -64,8 +66,8 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
     address internal immutable _vault;
     address internal immutable _swapRouter;
     address internal immutable _settlementToken;
-    address internal immutable _crvFactory;
     address internal _permissivePairAddress = address(1);
+    address[2] internal _crvFactories;
 
     //
     // EXTERNAL NON-VIEW
@@ -74,11 +76,11 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
     constructor(
         address vault,
         address swapRouter,
-        address crvFactory
+        address[2] memory crvFactories
     ) {
         _vault = vault;
         _swapRouter = swapRouter;
-        _crvFactory = crvFactory;
+        _crvFactories = crvFactories;
 
         address settlementTokenAddress = IVault(vault).getSettlementToken();
         _settlementToken = settlementTokenAddress;
@@ -226,7 +228,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
 
         // exchange
         IPoolCurveSwap crvPool = IPoolCurveSwap(data.crvPool);
-        IFactorySidechains factory = IFactorySidechains(_crvFactory);
+        IFactorySidechains factory = IFactorySidechains(data.crvFactory);
 
         (int128 fromIndex, int128 toIndex, bool isUnderlying) =
             factory.get_coin_indices(data.crvPool, data.token, _settlementToken);
@@ -275,6 +277,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
             abi.encode(
                 FlashCallbackData({
                     trader: params.trader,
+                    crvFactory: params.crvFactory,
                     crvPool: params.crvPool,
                     token: params.token,
                     settlementAmount: settlement,
@@ -339,36 +342,43 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         return _vault;
     }
 
-    function findCurvePoolForCoins(address from, uint256 iteration) external view returns (address) {
+    function findCurveFactoryAndPoolForCoins(address from) external view returns (address, address) {
         uint256 index = 0;
         uint256 largestBalance = 0;
         address targetPool = address(0x0);
-        IFactorySidechains factory = IFactorySidechains(_crvFactory);
-        while (index < iteration) {
-            address pool = factory.find_pool_for_coins(from, _settlementToken, index);
+        address targetFactory = address(0x0);
 
-            if (pool == address(0x0)) {
-                break;
+        for (uint256 i = 0; i < _crvFactories.length; i++) {
+            IFactorySidechains factory = IFactorySidechains(_crvFactories[i]);
+            uint256 iteration = factory.pool_count();
+
+            while (index < iteration) {
+                address pool = factory.find_pool_for_coins(from, _settlementToken, index);
+
+                if (pool == address(0x0)) {
+                    break;
+                }
+
+                (int128 fromIndex, , bool isUnderlying) = factory.get_coin_indices(pool, from, _settlementToken);
+                uint256 tmpBalance = 0;
+                if (isUnderlying) {
+                    tmpBalance = factory.get_underlying_balances(pool)[fromIndex.toUint256()];
+                } else {
+                    uint256[4] memory balances = factory.get_balances(pool);
+                    tmpBalance = balances[0];
+                }
+
+                if (tmpBalance > largestBalance) {
+                    largestBalance = tmpBalance;
+                    targetFactory = _crvFactories[i];
+                    targetPool = pool;
+                }
+
+                index++;
             }
-
-            (int128 fromIndex, , bool isUnderlying) = factory.get_coin_indices(pool, from, _settlementToken);
-            uint256 tmpBalance = 0;
-            if (isUnderlying) {
-                tmpBalance = factory.get_underlying_balances(pool)[fromIndex.toUint256()];
-            } else {
-                uint256[4] memory balances = factory.get_balances(pool);
-                tmpBalance = balances[0];
-            }
-
-            if (tmpBalance > largestBalance) {
-                largestBalance = tmpBalance;
-                targetPool = pool;
-            }
-
-            index++;
         }
 
-        return targetPool;
+        return (targetFactory, targetPool);
     }
 
     //

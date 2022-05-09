@@ -299,12 +299,14 @@ describe("Liquidator", () => {
         })
     })
 
-    describe("findCurvePoolForCoins", () => {
+    describe("findCurveFactoryAndPoolForCoins", () => {
         it("should get the pool correctly", async () => {
-            const poolAddress = await liquidator.findCurvePoolForCoins(UST.address, 10)
+            const [factoryAddress, poolAddress] = await liquidator.findCurveFactoryAndPoolForCoins(UST.address)
+            expect(factoryAddress).to.eq(factorySidechains.address)
             expect(poolAddress).to.eq(plain4Basic.address)
 
-            const poolAddressZero = await liquidator.findCurvePoolForCoins(wbtc.address, 10)
+            const [factoryAddressZero, poolAddressZero] = await liquidator.findCurveFactoryAndPoolForCoins(wbtc.address)
+            expect(factoryAddressZero).to.eq(ethers.constants.AddressZero)
             expect(poolAddressZero).to.eq(ethers.constants.AddressZero)
         })
     })
@@ -758,6 +760,7 @@ describe("Liquidator", () => {
                     maxSettlementTokenSpent: parseUnits("100", usdcDecimals),
                     minSettlementTokenProfit: parseUnits("1", usdcDecimals),
                     uniPool: poolWethUsdc.address,
+                    crvFactory: factorySidechains.address,
                     crvPool: plain4Basic.address,
                     token: UST.address,
                 })
@@ -781,6 +784,7 @@ describe("Liquidator", () => {
                     maxSettlementTokenSpent: parseUnits("1", usdcDecimals),
                     minSettlementTokenProfit: parseUnits("0", usdcDecimals),
                     uniPool: poolWethUsdc.address,
+                    crvFactory: factorySidechains.address,
                     crvPool: plain4Basic.address,
                     token: UST.address,
                 })
@@ -802,6 +806,7 @@ describe("Liquidator", () => {
                     maxSettlementTokenSpent: parseUnits("1", usdcDecimals),
                     minSettlementTokenProfit: parseUnits("0", usdcDecimals),
                     uniPool: poolWethUsdc.address,
+                    crvFactory: factorySidechains.address,
                     crvPool: plain4Basic.address,
                     token: UST.address,
                 })
@@ -843,6 +848,7 @@ describe("Liquidator", () => {
                         maxSettlementTokenSpent: parseUnits("100", usdcDecimals),
                         minSettlementTokenProfit: parseUnits("-100", usdcDecimals),
                         uniPool: poolWethUsdc.address,
+                        crvFactory: factorySidechains.address,
                         crvPool: plain4Basic.address,
                         token: UST.address,
                     })
@@ -867,6 +873,7 @@ describe("Liquidator", () => {
                             maxSettlementTokenSpent: parseUnits("100", usdcDecimals),
                             minSettlementTokenProfit: parseUnits("0", usdcDecimals),
                             uniPool: poolWethUsdc.address,
+                            crvFactory: factorySidechains.address,
                             crvPool: plain4Basic.address,
                             token: UST.address,
                         }),
@@ -900,6 +907,7 @@ describe("Liquidator", () => {
                         maxSettlementTokenSpent: parseUnits("100", usdcDecimals),
                         minSettlementTokenProfit: parseUnits("0", usdcDecimals),
                         uniPool: poolWethUsdc.address,
+                        crvFactory: factorySidechains.address,
                         crvPool: plain4Basic.address,
                         token: UST.address,
                     }),
@@ -929,6 +937,7 @@ describe("Liquidator", () => {
                         maxSettlementTokenSpent: parseUnits("100", usdcDecimals),
                         minSettlementTokenProfit: parseUnits("0", usdcDecimals),
                         uniPool: poolWethUsdc.address,
+                        crvFactory: factorySidechains.address,
                         crvPool: plain4Basic.address,
                         token: UST.address,
                     }),
