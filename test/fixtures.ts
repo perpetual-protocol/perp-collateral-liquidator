@@ -159,10 +159,10 @@ export function createFixture(): () => Promise<Fixture> {
 
         const stableSwap3PoolFactory = await ethers.getContractFactory("StableSwap3Pool")
         const stableSwap3Pool = (await stableSwap3PoolFactory.deploy(
-            [USDC.address, USDT.address, UST.address],
+            [FRAX.address, USDC.address, USDT.address],
             1000,
             4000000,
-            0,
+            5000000000,
             "3pool",
             "3pool",
         )) as StableSwap3Pool
@@ -172,7 +172,7 @@ export function createFixture(): () => Promise<Fixture> {
             3,
             stableSwap3Pool.address,
             "0x0000000000000000000000000000000000000000000000000000000000000000",
-            0,
+            394770,
             0,
             "3pool",
         )
@@ -345,6 +345,7 @@ export function createFixture(): () => Promise<Fixture> {
         const liquidator = (await liquidatorFactory.deploy(vault.address, uniV3Router.address, [
             factorySidechains.address,
             curveRegistry.address,
+            // "0x2db0E83599a91b508Ac268a6197b8B14F5e72840", // OP sidechain factory
         ])) as Liquidator
 
         return {

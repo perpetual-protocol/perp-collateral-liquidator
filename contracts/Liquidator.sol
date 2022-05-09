@@ -68,7 +68,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
     address internal immutable _swapRouter;
     address internal immutable _settlementToken;
     address internal _permissivePairAddress = address(1);
-    address[2] internal _crvFactories;
+    address[] internal _crvFactories;
 
     //
     // EXTERNAL NON-VIEW
@@ -77,7 +77,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
     constructor(
         address vault,
         address swapRouter,
-        address[2] memory crvFactories
+        address[] memory crvFactories
     ) {
         _vault = vault;
         _swapRouter = swapRouter;
@@ -343,7 +343,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         return _vault;
     }
 
-    function findCurveFactoryAndPoolForCoins(address from) external view returns (address, address) {
+    function findCurveFactoryAndPoolForCoins(address from, address to) external view returns (address, address) {
         uint256 largestBalance = 0;
         address targetPool = address(0x0);
         address targetFactory = address(0x0);
@@ -352,24 +352,20 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
             IFactorySidechains factory = IFactorySidechains(_crvFactories[i]);
 
             uint256 index = 0;
-            uint256 iteration = factory.pool_count();
-            console.log("iteration: ", iteration);
 
-            while (index < iteration) {
-                address pool = factory.find_pool_for_coins(from, _settlementToken, index);
-                console.log("index", index);
-                console.log("pool", pool);
+            while (index < factory.pool_count()) {
+                address pool = factory.find_pool_for_coins(from, to, index);
+
                 if (pool == address(0x0)) {
                     break;
                 }
 
-                (int128 fromIndex, , bool isUnderlying) = factory.get_coin_indices(pool, from, _settlementToken);
+                (int128 fromIndex, , bool isUnderlying) = factory.get_coin_indices(pool, from, to);
                 uint256 tmpBalance = 0;
                 if (isUnderlying) {
                     tmpBalance = factory.get_underlying_balances(pool)[fromIndex.toUint256()];
                 } else {
-                    uint256[4] memory balances = factory.get_balances(pool);
-                    tmpBalance = balances[fromIndex.toUint256()];
+                    tmpBalance = factory.get_balances(pool)[fromIndex.toUint256()];
                 }
 
                 if (tmpBalance > largestBalance) {

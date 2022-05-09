@@ -300,52 +300,65 @@ describe("Liquidator", () => {
         })
     })
 
-    describe.only("findCurveFactoryAndPoolForCoins", () => {
-        describe("get the factory and pool correctly", () => {
+    describe("findCurveFactoryAndPoolForCoins", () => {
+        describe("get the factory and plain pool correctly", () => {
             it("from factory", async () => {
-                const [factoryAddress, poolAddress] = await liquidator.findCurveFactoryAndPoolForCoins(UST.address)
+                const [factoryAddress, poolAddress] = await liquidator.findCurveFactoryAndPoolForCoins(
+                    UST.address,
+                    usdc.address,
+                )
 
                 expect(factoryAddress).to.eq(factorySidechains.address)
                 expect(poolAddress).to.eq(plain4Basic.address)
             })
 
-            it.only("from registry", async () => {
+            it("from registry", async () => {
                 const usdcTwoMillion = parseUnits("2000000", 6)
                 const usdtTwoMillion = parseUnits("2000000", 6)
                 const fraxTwoMillion = parseUnits("2000000", 18)
-                const ustTwoMillion = parseUnits("2000000", 6)
 
                 await usdc.mint(carol.address, usdcTwoMillion)
                 await USDT.mint(carol.address, usdtTwoMillion)
-                // await FRAX.mint(carol.address, fraxTwoMillion)
-                await UST.mint(carol.address, ustTwoMillion)
+                await FRAX.mint(carol.address, fraxTwoMillion)
 
                 await usdc.connect(carol).approve(stableSwap3Pool.address, usdcTwoMillion)
                 await USDT.connect(carol).approve(stableSwap3Pool.address, usdtTwoMillion)
-                // await FRAX.connect(carol).approve(stableSwap3Pool.address, fraxTwoMillion)
-                await UST.connect(carol).approve(stableSwap3Pool.address, ustTwoMillion)
+                await FRAX.connect(carol).approve(stableSwap3Pool.address, fraxTwoMillion)
+
                 await stableSwap3Pool
                     .connect(carol)
-                    ["add_liquidity(uint256[3],uint256)"]([usdcTwoMillion, usdtTwoMillion, ustTwoMillion], 0)
+                    ["add_liquidity(uint256[3],uint256)"]([fraxTwoMillion, usdcTwoMillion, usdtTwoMillion], 0)
 
-                const usdcamount = await usdc.balanceOf(stableSwap3Pool.address)
-                const usdtamount = await USDT.balanceOf(stableSwap3Pool.address)
-                const ustamount = await UST.balanceOf(stableSwap3Pool.address)
-                console.log(`usdc amount: ${usdcamount} , usdt amount: ${usdtamount}, ust amount: ${ustamount}`)
-
-                const [factoryAddress, poolAddress] = await liquidator.findCurveFactoryAndPoolForCoins(USDT.address)
+                const [factoryAddress, poolAddress] = await liquidator.findCurveFactoryAndPoolForCoins(
+                    USDT.address,
+                    usdc.address,
+                )
 
                 expect(factoryAddress).to.eq(curveRegistry.address)
                 expect(poolAddress).to.eq(stableSwap3Pool.address)
             })
+        })
 
-            it("when a token is not exist", async () => {
-                const [factoryAddressZero, poolAddressZero] = await liquidator.findCurveFactoryAndPoolForCoins(
-                    wbtc.address,
+        describe.skip("get the factory and meta pool correctly", () => {
+            // NOTE: it's hard to test meta pool, just test it at fork environment instead.
+            it("from factory", async () => {
+                const [factoryAddress, poolAddress] = await liquidator.findCurveFactoryAndPoolForCoins(
+                    "0x8c6f28f2f1a3c87f0f938b96d27520d9751ec8d9", // susd
+                    "0x7f5c764cbc14f9669b88837ca1490cca17c31607", // usdc
                 )
-                expect(factoryAddressZero).to.eq(ethers.constants.AddressZero)
-                expect(poolAddressZero).to.eq(ethers.constants.AddressZero)
+
+                expect(factoryAddress).to.eq("0x2db0E83599a91b508Ac268a6197b8B14F5e72840")
+                expect(poolAddress).to.eq("0x061b87122Ed14b9526A813209C8a59a633257bAb") // sUSD3CRV-f
             })
+        })
+
+        it("when a token is not exist", async () => {
+            const [factoryAddressZero, poolAddressZero] = await liquidator.findCurveFactoryAndPoolForCoins(
+                wbtc.address,
+                usdc.address,
+            )
+            expect(factoryAddressZero).to.eq(ethers.constants.AddressZero)
+            expect(poolAddressZero).to.eq(ethers.constants.AddressZero)
         })
     })
 

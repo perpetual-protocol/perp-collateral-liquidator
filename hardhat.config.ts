@@ -43,6 +43,11 @@ const config: HardhatUserConfig = {
             allowUnlimitedContractSize: true,
             saveDeployments: true,
             ...hardhatForkConfig(),
+            // forking: {
+            //     enabled: true,
+            //     url: "",
+            //     blockNumber: 7479397,
+            // },
         },
         optimismKovan: {
             url: getUrl(CompanionNetwork.optimismKovan),

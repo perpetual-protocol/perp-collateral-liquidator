@@ -251,6 +251,7 @@ export class Liquidator {
             case LiquidationType.FlashLiquidateThroughCurve: {
                 const [targetFactoryAddress, targetPoolAddress] = await this.contract.findCurveFactoryAndPoolForCoins(
                     targetCollateralAddress,
+                    this.settlementToken.address,
                 )
 
                 if (targetPoolAddress === ethers.constants.AddressZero) {
