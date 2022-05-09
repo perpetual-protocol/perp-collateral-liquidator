@@ -235,7 +235,7 @@ export class Liquidator {
                     })
 
                     this.nextNonce++
-                    this.txCheck(tx)
+                    await this.txCheck(tx)
                 } catch (e) {
                     const error = new CustomError(`Send${pathMapMethod}TxFailed`, {
                         params: {
@@ -304,7 +304,7 @@ export class Liquidator {
                     })
 
                     this.nextNonce++
-                    this.txCheck(tx)
+                    await this.txCheck(tx)
                 } catch (e) {
                     const error = new CustomError(`Send${pathMapMethod}TxFailed`, {
                         params: {
