@@ -118,7 +118,7 @@ export function createFixture(): () => Promise<Fixture> {
 
         const curveRegistryFactory = await ethers.getContractFactory("Registry")
         const curveRegistry = (await curveRegistryFactory.deploy(registryAddressProvider.address)) as Registry
-        console.log(`curveRegistry ${curveRegistry.address}`)
+
         const factorySidechainsFactory = await ethers.getContractFactory("FactorySidechains")
         const factorySidechains = (await factorySidechainsFactory.deploy(
             "0x0000000000000000000000000000000000000001",
@@ -159,8 +159,8 @@ export function createFixture(): () => Promise<Fixture> {
 
         const stableSwap3PoolFactory = await ethers.getContractFactory("StableSwap3Pool")
         const stableSwap3Pool = (await stableSwap3PoolFactory.deploy(
-            [USDC.address, USDT.address, FRAX.address],
-            200,
+            [USDC.address, USDT.address, UST.address],
+            1000,
             4000000,
             0,
             "3pool",

@@ -309,32 +309,32 @@ describe("Liquidator", () => {
                 expect(poolAddress).to.eq(plain4Basic.address)
             })
 
-            it("from registry", async () => {
+            it.only("from registry", async () => {
                 const usdcTwoMillion = parseUnits("2000000", 6)
                 const usdtTwoMillion = parseUnits("2000000", 6)
                 const fraxTwoMillion = parseUnits("2000000", 18)
+                const ustTwoMillion = parseUnits("2000000", 6)
 
                 await usdc.mint(carol.address, usdcTwoMillion)
                 await USDT.mint(carol.address, usdtTwoMillion)
-                await FRAX.mint(carol.address, fraxTwoMillion)
+                // await FRAX.mint(carol.address, fraxTwoMillion)
+                await UST.mint(carol.address, ustTwoMillion)
 
                 await usdc.connect(carol).approve(stableSwap3Pool.address, usdcTwoMillion)
                 await USDT.connect(carol).approve(stableSwap3Pool.address, usdtTwoMillion)
-                await FRAX.connect(carol).approve(stableSwap3Pool.address, fraxTwoMillion)
-
-                console.log(`usdc ${usdc.address}`)
-                console.log(`frax ${FRAX.address}`)
-                console.log(`USDT ${USDT.address}`)
-                console.log(`carol ${carol.address}`)
-                console.log(`stableSwap3Pool ${stableSwap3Pool.address}`)
-
-                await stableSwap3Pool.connect(carol)["add_liquidity(uint256[3],uint256)"]([usdcTwoMillion, 1, 0], 0)
+                // await FRAX.connect(carol).approve(stableSwap3Pool.address, fraxTwoMillion)
+                await UST.connect(carol).approve(stableSwap3Pool.address, ustTwoMillion)
+                await stableSwap3Pool
+                    .connect(carol)
+                    ["add_liquidity(uint256[3],uint256)"]([usdcTwoMillion, usdtTwoMillion, ustTwoMillion], 0)
 
                 const usdcamount = await usdc.balanceOf(stableSwap3Pool.address)
                 const usdtamount = await USDT.balanceOf(stableSwap3Pool.address)
-                console.log(`usdc amount: ${usdcamount} , usdt amount: ${usdtamount}`)
+                const ustamount = await UST.balanceOf(stableSwap3Pool.address)
+                console.log(`usdc amount: ${usdcamount} , usdt amount: ${usdtamount}, ust amount: ${ustamount}`)
 
                 const [factoryAddress, poolAddress] = await liquidator.findCurveFactoryAndPoolForCoins(USDT.address)
+
                 expect(factoryAddress).to.eq(curveRegistry.address)
                 expect(poolAddress).to.eq(stableSwap3Pool.address)
             })

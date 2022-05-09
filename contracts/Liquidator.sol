@@ -344,13 +344,14 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
     }
 
     function findCurveFactoryAndPoolForCoins(address from) external view returns (address, address) {
-        uint256 index = 0;
         uint256 largestBalance = 0;
         address targetPool = address(0x0);
         address targetFactory = address(0x0);
 
         for (uint256 i = 0; i < _crvFactories.length; i++) {
             IFactorySidechains factory = IFactorySidechains(_crvFactories[i]);
+
+            uint256 index = 0;
             uint256 iteration = factory.pool_count();
             console.log("iteration: ", iteration);
 
@@ -368,7 +369,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
                     tmpBalance = factory.get_underlying_balances(pool)[fromIndex.toUint256()];
                 } else {
                     uint256[4] memory balances = factory.get_balances(pool);
-                    tmpBalance = balances[0];
+                    tmpBalance = balances[fromIndex.toUint256()];
                 }
 
                 if (tmpBalance > largestBalance) {
