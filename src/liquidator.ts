@@ -256,7 +256,14 @@ export class Liquidator {
 
                 if (targetPoolAddress === ethers.constants.AddressZero) {
                     const error = new CustomError(`NoLiquidCurvePoolFound`, {
-                        params: { account, collateral: targetCollateralAddress },
+                        params: { account, targetCollateralAddress },
+                    })
+                    throw error
+                }
+
+                if (targetFactoryAddress === ethers.constants.AddressZero) {
+                    const error = new CustomError(`NoCurveFactoryFound`, {
+                        params: { account, targetFactoryAddress },
                     })
                     throw error
                 }
