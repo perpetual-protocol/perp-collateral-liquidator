@@ -115,7 +115,7 @@ export class Liquidator {
                 continue
             }
 
-            const accounts = [...makers, ...traders]
+            const accounts = _.uniq([...makers, ...traders])
 
             for (const chunkedAccounts of _.chunk(accounts, REQUEST_CHUNK_SIZE)) {
                 await Promise.all(
