@@ -342,7 +342,7 @@ export function createFixture(): () => Promise<Fixture> {
         //
 
         const liquidatorFactory = await ethers.getContractFactory("Liquidator")
-        const liquidator = (await liquidatorFactory.deploy(vault.address, uniV3Router.address, [
+        const liquidator = (await liquidatorFactory.deploy(vault.address, uniV3Router.address, uniV3Factory.address, [
             factorySidechains.address,
             curveRegistry.address,
             // "0x2db0E83599a91b508Ac268a6197b8B14F5e72840", // OP sidechain factory

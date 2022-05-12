@@ -3,6 +3,7 @@ import mainMetadataOptimism from "@perp/curie-deployments/optimism/core/metadata
 import { DeployFunction } from "hardhat-deploy/types"
 
 const uniswapV3SwapRouterAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564"
+const uniswapV3Factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984"
 const crvFactories = [""]
 
 const func: DeployFunction = async function (hre: any) {
@@ -14,7 +15,7 @@ const func: DeployFunction = async function (hre: any) {
 
     await deploy("Liquidator", {
         from: deployer,
-        args: [metadata.contracts.Vault.address, uniswapV3SwapRouterAddress, crvFactories],
+        args: [metadata.contracts.Vault.address, uniswapV3SwapRouterAddress, uniswapV3Factory, crvFactories],
         log: true,
         autoMine: true, // speed up deployment on local network (ganache, hardhat), no effect on live networks
     })
