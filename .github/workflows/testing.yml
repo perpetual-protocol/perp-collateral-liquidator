@@ -1,0 +1,51 @@
+name: Testing
+
+on: [push]
+
+jobs:
+    contract-test:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v2
+              with:
+                persist-credentials: false
+
+            # fix SSH error: git@github.com: Permission denied (publickey).
+            # copy from https://github.com/actions/setup-node/issues/214#issuecomment-810829250
+            - name: Reconfigure git to use HTTP authentication
+              run: >
+                git config --global url."https://github.com/".insteadOf
+                ssh://git@github.com/
+
+            - name: Get npm cache directory
+              id: npm-cache
+              run: |
+                  echo "::set-output name=dir::$(npm config get cache)"
+            - uses: actions/cache@v2
+              with:
+                  path: |
+                      ${{ steps.npm-cache.outputs.dir }}
+                      **/node_modules
+                  key: ${{ github.job }}-${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+                  restore-keys: |
+                      ${{ github.job }}-${{ runner.os }}-node-
+
+            - name: Use Node.js 12.x
+              uses: actions/setup-node@v1
+              with:
+                  node-version: 12.x
+
+            - name: Install contract package dependencies
+              run: npm ci
+
+            - name: Build contract package
+              run: npm run build:contract
+
+            - name: generate types
+              run: npm run typechain
+
+            - name: Run contract tests
+              run: npm run test
+              env:
+                # to solve problem of memory leak https://stackoverflow.com/a/59572966
+                NODE_OPTIONS: "--max-old-space-size=4096"
