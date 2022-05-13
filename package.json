@@ -10,13 +10,15 @@
   "scripts": {
     "clean": "rm -rf typechain && rm -rf artifacts && rm -rf cache",
     "typechain": "hardhat typechain && ts-node scripts/typeGen.ts",
-    "build": "npm run build:contract && npm run build:app",
+    "build": "npm run build:contract && npm run typechain && npm run build:app",
     "build:contract": "hardhat compile --no-typechain",
     "build:app": "tsc -b .",
     "deploy-contract:optimism-kovan": "hardhat deploy --network optimismKovan",
     "deploy-contract:optimism": "hardhat deploy --network optimism",
     "app:optimism-kovan": "ENV=optimism-kovan ts-node --files src/index.ts",
     "app:optimism": "ENV=optimism ts-node --files src/index.ts",
+    "start:optimism-kovan": "ENV=optimism-kovan node build/src/index.js",
+    "start:optimism": "ENV=optimism node build/src/index.js",
     "test": "hardhat test"
   },
   "dependencies": {
