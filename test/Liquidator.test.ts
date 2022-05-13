@@ -480,7 +480,13 @@ describe("Liquidator", () => {
 
     describe("uniswapV3SwapCallback", () => {
         it("force error, called by non-authorized attacker for the first time", async () => {
-            await expect(liquidator.connect(davis).uniswapV3SwapCallback(0, 0, "0x")).to.revertedWith("L_NPPA")
+            await expect(liquidator.connect(davis).uniswapV3SwapCallback(1, -1, "0x")).to.be.reverted
+        })
+    })
+
+    describe("uniswapV3FlashCallback", () => {
+        it("force error, called by non-authorized attacker for the first time", async () => {
+            await expect(liquidator.connect(davis).uniswapV3SwapCallback(0, 0, "0x")).to.be.reverted
         })
     })
 
@@ -639,6 +645,19 @@ describe("Liquidator", () => {
                 expect(usdcBalance2.sub(usdcBalance1)).to.be.gt(0)
             })
 
+            it("non-owner can still do liquidate", async () => {
+                await liquidator.flashLiquidate(
+                    alice.address,
+                    parseUnits("100", usdcDecimals),
+                    parseUnits("1", usdcDecimals),
+                    { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
+                    "0x",
+                )
+
+                const usdcBalance = await usdc.balanceOf(liquidator.address)
+                expect(usdcBalance).to.be.gt(0)
+            })
+
             describe("non-profitable swap", () => {
                 beforeEach(async () => {
                     // prepare to manipulate the spot price
@@ -762,20 +781,6 @@ describe("Liquidator", () => {
                 ).to.be.revertedWith("L_NL")
             })
         })
-
-        it("force error, not owner", async () => {
-            await expect(
-                liquidator
-                    .connect(davis)
-                    .flashLiquidate(
-                        alice.address,
-                        parseUnits("100", usdcDecimals),
-                        parseUnits("0", usdcDecimals),
-                        { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
-                        "0x",
-                    ),
-            ).to.be.revertedWith("Ownable: caller is not the owner")
-        })
     })
 
     describe("flashLiquidateThroughCurve", () => {
@@ -870,6 +875,21 @@ describe("Liquidator", () => {
 
             it("profit on meta pool twice", async () => {})
 
+            it("non-owner can still do liquidate", async () => {
+                await liquidator.connect(davis).flashLiquidateThroughCurve({
+                    trader: alice.address,
+                    maxSettlementTokenSpent: parseUnits("100", usdcDecimals),
+                    minSettlementTokenProfit: parseUnits("1", usdcDecimals),
+                    uniPool: poolWethUsdc.address,
+                    crvFactory: factorySidechains.address,
+                    crvPool: plain4Basic.address,
+                    token: UST.address,
+                })
+
+                const usdcBalance = await usdc.balanceOf(liquidator.address)
+                expect(usdcBalance).to.be.gt(0)
+            })
+
             describe("non-profitable swap", () => {
                 beforeEach(async () => {
                     // break balance of 4 plain pools
@@ -936,21 +956,6 @@ describe("Liquidator", () => {
         })
 
         describe("trader collateral is not liquidatable", () => {
-            it("force error when flashLiquidate()", async () => {
-                await expect(
-                    liquidator.flashLiquidate(
-                        alice.address,
-                        parseUnits("100", usdcDecimals),
-                        parseUnits("0", usdcDecimals),
-                        { tokenIn: wbtc.address, fee: await poolWbtcWeth.fee(), tokenOut: weth.address },
-                        ethers.utils.solidityPack(
-                            ["address", "uint24", "address"],
-                            [weth.address, await poolWethUsdc.fee(), usdc.address],
-                        ),
-                    ),
-                ).to.be.revertedWith("L_NL")
-            })
-
             it("force error when flashLiquidateThroughCurve()", async () => {
                 await expect(
                     liquidator.flashLiquidateThroughCurve({
@@ -963,36 +968,6 @@ describe("Liquidator", () => {
                         token: UST.address,
                     }),
                 ).to.be.revertedWith("L_NL")
-            })
-        })
-
-        describe("not owner", () => {
-            it("force error when flashLiquidate()", async () => {
-                await expect(
-                    liquidator
-                        .connect(davis)
-                        .flashLiquidate(
-                            alice.address,
-                            parseUnits("100", usdcDecimals),
-                            parseUnits("0", usdcDecimals),
-                            { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
-                            "0x",
-                        ),
-                ).to.be.revertedWith("Ownable: caller is not the owner")
-            })
-
-            it("force error when flashLiquidateThroughCurve()", async () => {
-                await expect(
-                    liquidator.connect(davis).flashLiquidateThroughCurve({
-                        trader: alice.address,
-                        maxSettlementTokenSpent: parseUnits("100", usdcDecimals),
-                        minSettlementTokenProfit: parseUnits("0", usdcDecimals),
-                        uniPool: poolWethUsdc.address,
-                        crvFactory: factorySidechains.address,
-                        crvPool: plain4Basic.address,
-                        token: UST.address,
-                    }),
-                ).to.be.revertedWith("Ownable: caller is not the owner")
             })
         })
     })

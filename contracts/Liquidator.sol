@@ -101,13 +101,13 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         int256 amount1Delta,
         bytes calldata _data
     ) external override {
-        // swaps entirely within 0-liquidity regions are not supported -> 0 swap is forbidden
-        // LH_F0S: forbidden 0 swap
-        require((amount0Delta > 0 && amount1Delta < 0) || (amount0Delta < 0 && amount1Delta > 0), "L_F0S");
-
         SwapCallbackData memory data = abi.decode(_data, (SwapCallbackData));
 
         CallbackValidation.verifyCallback(_uniFactory, data.uniPoolKey);
+
+        // swaps entirely within 0-liquidity regions are not supported -> 0 swap is forbidden
+        // L_F0S: forbidden 0 swap
+        require((amount0Delta > 0 && amount1Delta < 0) || (amount0Delta < 0 && amount1Delta > 0), "L_F0S");
 
         address poolAddress = msg.sender;
         address token0 = IUniswapV3Pool(poolAddress).token0();
@@ -202,7 +202,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         );
     }
 
-    // eth/usdc borrow usdc (amount1).
+    /// @inheritdoc IUniswapV3FlashCallback
     function uniswapV3FlashCallback(
         uint256 fee0,
         uint256 fee1,
@@ -211,6 +211,10 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         FlashCallbackData memory data = abi.decode(_data, (FlashCallbackData));
 
         CallbackValidation.verifyCallback(_uniFactory, data.uniPoolKey);
+
+        // borrow two assets or borrow 0 assets is forbidden
+        // L_FBA: forbidden borrow amount
+        require((fee0 == 0 || fee1 == 0) || !(fee0 == 0 && fee1 == 0), "L_FBA");
 
         // liquidate
         IVault(_vault).liquidateCollateral(data.trader, data.token, data.collateralAmount, false);
