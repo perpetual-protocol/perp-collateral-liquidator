@@ -69,7 +69,6 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
     address internal immutable _uniFactory;
     address internal immutable _settlementToken;
     address[] internal _crvFactories;
-    mapping(address => bool) internal _whitelistMap;
 
     //
     // EXTERNAL NON-VIEW
