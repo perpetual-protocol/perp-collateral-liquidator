@@ -4,7 +4,8 @@ import { DeployFunction } from "hardhat-deploy/types"
 
 const uniswapV3SwapRouterAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564"
 const uniswapV3Factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984"
-const crvFactories = [""]
+// you can get a list of factory addresses from registry contract 0x0000000022D53366457F9d5E68Ec105046FC4383
+const crvFactories = ["0xC5cfaDA84E902aD92DD40194f0883ad49639b023", "0x2db0E83599a91b508Ac268a6197b8B14F5e72840"]
 
 const func: DeployFunction = async function (hre: any) {
     const { deployments, getNamedAccounts } = hre

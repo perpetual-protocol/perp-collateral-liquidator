@@ -1,5 +1,5 @@
-// import mainMetadataOptimism from "@perp/curie-deployments/optimism/core/metadata.json"
 import mainMetadataOptimismKovan from "@perp/curie-deployments/optimism-kovan/core/metadata.json"
+import mainMetadataOptimism from "@perp/curie-deployments/optimism/core/metadata.json"
 import { ethers } from "ethers"
 
 export type Hop = {
@@ -38,38 +38,17 @@ export type Metadata = {
 }
 
 export const optitmismEthereum: Metadata = {
-    // [mainMetadataOptimism.externalContracts.TestWBTC]: {
-    //     method: LiquidationType.FlashLiquidate,
-    //     params: {
-    //         head: {
-    //             tokenIn: mainMetadataOptimism.externalContracts.TestWBTC,
-    //             fee: "3000",
-    //             tokenOut: mainMetadataOptimism.externalContracts.TestUSDT,
-    //         },
-    //         tail: ethers.utils.solidityPack(
-    //             ["address", "uint24", "address"],
-    //             [
-    //                 mainMetadataOptimism.externalContracts.TestUSDT,
-    //                 "3000",
-    //                 mainMetadataOptimism.externalContracts.USDC,
-    //             ],
-    //         ),
-    //     },
-    // },
-    // [mainMetadataOptimism.externalContracts.TestUSDT]: {
-    //     method: LiquidationType.FlashLiquidate,
-    //     params: {
-    //         head: {
-    //             tokenIn: mainMetadataOptimism.externalContracts.TestUSDT,
-    //             fee: "3000",
-    //             tokenOut: mainMetadataOptimism.externalContracts.USDC,
-    //         },
-    //         tail: "0x",
-    //     },
-    // },
-    // [mainMetadataOptimism.externalContracts.UST]: {
-    //     method: LiquidationType.FlashLiquidateThroughCurve
-    // },
+    [mainMetadataOptimism.externalContracts.WETH9]: {
+        method: LiquidationType.FlashLiquidate,
+        params: {
+            head: {
+                tokenIn: mainMetadataOptimism.externalContracts.WETH9,
+                fee: "3000",
+                tokenOut: mainMetadataOptimism.externalContracts.USDC,
+            },
+            tail: "0x",
+        },
+    },
 }
 
 const optimismKovan: Metadata = {
