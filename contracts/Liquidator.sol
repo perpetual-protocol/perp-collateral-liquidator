@@ -101,7 +101,6 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         bytes calldata _data
     ) external override {
         SwapCallbackData memory data = abi.decode(_data, (SwapCallbackData));
-
         CallbackValidation.verifyCallback(_uniFactory, data.uniPoolKey);
 
         // swaps entirely within 0-liquidity regions are not supported -> 0 swap is forbidden
@@ -209,6 +208,8 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         FlashCallbackData memory data = abi.decode(_data, (FlashCallbackData));
 
         CallbackValidation.verifyCallback(_uniFactory, data.uniPoolKey);
+
+        _requireValidCrvFactory(data.crvFactory);
 
         // borrow two assets or borrow 0 assets is forbidden
         // L_FBA: forbidden borrow amount
@@ -369,5 +370,24 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         }
 
         return (targetFactory, targetPool);
+    }
+
+    //
+    //  INTERNAL VIEW
+    //
+
+    function _requireValidCrvFactory(address factory) internal view {
+        uint256 len = _crvFactories.length;
+        bool isValid = false;
+
+        for (uint256 i = 0; i < len; i++) {
+            if (factory == _crvFactories[i]) {
+                isValid = true;
+                break;
+            }
+        }
+
+        // L_FCF: forbidden crv factory
+        require(isValid, "L_FCF");
     }
 }

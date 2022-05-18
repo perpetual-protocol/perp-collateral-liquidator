@@ -479,14 +479,31 @@ describe("Liquidator", () => {
     })
 
     describe("uniswapV3SwapCallback", () => {
-        it("force error, called by non-authorized attacker for the first time", async () => {
+        it("force error, called by non-unipool address", async () => {
             await expect(liquidator.connect(davis).uniswapV3SwapCallback(1, -1, "0x")).to.be.reverted
         })
     })
 
     describe("uniswapV3FlashCallback", () => {
-        it("force error, called by non-authorized attacker for the first time", async () => {
-            await expect(liquidator.connect(davis).uniswapV3SwapCallback(0, 0, "0x")).to.be.reverted
+        it("force error, called by non-unipool address", async () => {
+            await expect(liquidator.connect(davis).uniswapV3FlashCallback(0, 0, "0x")).to.be.reverted
+        })
+
+        it("force error, called by invalid crv factory", async () => {
+            await mintAndDeposit(fixture, alice, 100, UST)
+            await mintAndDeposit(fixture, alice, 0.05, wbtc)
+            await makeAliceNonUsdCollateralLiquidatable("10")
+            await expect(
+                liquidator.flashLiquidateThroughCurve({
+                    trader: alice.address,
+                    maxSettlementTokenSpent: parseUnits("100", usdcDecimals),
+                    minSettlementTokenProfit: parseUnits("1", usdcDecimals),
+                    uniPool: poolWethUsdc.address,
+                    crvFactory: ethers.constants.AddressZero,
+                    crvPool: plain4Basic.address,
+                    token: UST.address,
+                }),
+            ).to.be.revertedWith("L_FCF")
         })
     })
 
