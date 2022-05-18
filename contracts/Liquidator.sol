@@ -108,9 +108,8 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         // L_F0S: forbidden 0 swap
         require((amount0Delta > 0 && amount1Delta < 0) || (amount0Delta < 0 && amount1Delta > 0), "L_F0S");
 
-        address poolAddress = msg.sender;
-        address token0 = IUniswapV3Pool(poolAddress).token0();
-        address token1 = IUniswapV3Pool(poolAddress).token1();
+        address token0 = data.uniPoolKey.token0;
+        address token1 = data.uniPoolKey.token1;
 
         // positive: liquidator give pool the collateral
         // negative: liquidator receive from pool (pathTail[0], or USDC)
@@ -141,7 +140,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         IVault(_vault).liquidateCollateral(data.trader, data.baseToken, collateralAmount, false);
 
         // transfer the collateral to uniswap pool
-        IERC20(collateralToken).safeTransfer(poolAddress, collateralAmount);
+        IERC20(collateralToken).safeTransfer(msg.sender, collateralAmount);
     }
 
     /// @notice Liquidate tradedr's collateral by using flash swap on uniswap v3
