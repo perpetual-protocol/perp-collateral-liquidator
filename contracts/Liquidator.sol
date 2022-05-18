@@ -29,6 +29,9 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
     using PerpSafeCast for int128;
     using SafeERC20 for IERC20;
 
+    event WhitelistLiquidatorAdded(address account);
+    event WhitelistLiquidatorRemoved(address account);
+
     struct SwapCallbackData {
         bytes path;
         address trader;
@@ -64,11 +67,21 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         address token;
     }
 
+    mapping(address => bool) internal _whitelistLiquidator;
     address internal immutable _vault;
     address internal immutable _swapRouter;
     address internal immutable _uniFactory;
     address internal immutable _settlementToken;
     address[] internal _crvFactories;
+
+    //
+    // MODIFIER
+    //
+
+    modifier onlyWhitelistLiquidator() {
+        require(_whitelistLiquidator[msg.sender], "L_OWL");
+        _;
+    }
 
     //
     // EXTERNAL NON-VIEW
@@ -88,6 +101,16 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         address settlementTokenAddress = IVault(vaultArg).getSettlementToken();
         _settlementToken = settlementTokenAddress;
         IERC20(settlementTokenAddress).safeApprove(vaultArg, uint256(-1));
+    }
+
+    function addWhitelistLiquidator(address liquidator) external onlyOwner {
+        _whitelistLiquidator[liquidator] = true;
+        emit WhitelistLiquidatorAdded(liquidator);
+    }
+
+    function removeWhitelistLiquidator(address liquidator) external onlyOwner {
+        _whitelistLiquidator[liquidator] = false;
+        emit WhitelistLiquidatorRemoved(liquidator);
     }
 
     function withdraw(address token) external onlyOwner {
@@ -160,7 +183,7 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         int256 minSettlementTokenProfit,
         Hop memory pathHead,
         bytes memory pathTail
-    ) external {
+    ) external onlyWhitelistLiquidator {
         (uint256 settlement, uint256 collateral) =
             IVault(_vault).getMaxRepaidSettlementAndLiquidatableCollateral(trader, pathHead.tokenIn);
         // L_NL: not liquidatable
@@ -240,7 +263,10 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
         IERC20(_settlementToken).safeTransfer(msg.sender, amountOwned);
     }
 
-    function flashLiquidateThroughCurve(FlashLiquidateThroughCurveParams calldata params) external {
+    function flashLiquidateThroughCurve(FlashLiquidateThroughCurveParams calldata params)
+        external
+        onlyWhitelistLiquidator
+    {
         (uint256 settlement, uint256 collateral) =
             IVault(_vault).getMaxRepaidSettlementAndLiquidatableCollateral(params.trader, params.token);
         // L_NL: not liquidatable
@@ -286,6 +312,10 @@ contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable 
     //
     // EXETERNAL VIEW
     //
+
+    function isWhitelistLiquidator(address liquidator) external view returns (bool) {
+        return _whitelistLiquidator[liquidator];
+    }
 
     /// @notice Get the most profitable collateral from the liquidatable trader
     /// @param trader The address of the liquidatable trader

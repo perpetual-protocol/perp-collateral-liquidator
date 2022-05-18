@@ -232,6 +232,9 @@ describe("Liquidator", () => {
         await plain4Basic
             .connect(carol)
             ["add_liquidity(uint256[4],uint256)"]([usdcMillion, ustMillion, fraxMillion, usdtMillion], 0)
+
+        // add whitelist liquidator
+        await liquidator.addWhitelistLiquidator(admin.address)
     })
 
     describe("constructor", () => {
@@ -480,13 +483,13 @@ describe("Liquidator", () => {
 
     describe("uniswapV3SwapCallback", () => {
         it("force error, called by non-unipool address", async () => {
-            await expect(liquidator.connect(davis).uniswapV3SwapCallback(1, -1, "0x")).to.be.reverted
+            await expect(liquidator.uniswapV3SwapCallback(1, -1, "0x")).to.be.reverted
         })
     })
 
     describe("uniswapV3FlashCallback", () => {
         it("force error, called by non-unipool address", async () => {
-            await expect(liquidator.connect(davis).uniswapV3FlashCallback(0, 0, "0x")).to.be.reverted
+            await expect(liquidator.uniswapV3FlashCallback(0, 0, "0x")).to.be.reverted
         })
 
         it("force error, called by invalid crv factory", async () => {
@@ -662,17 +665,18 @@ describe("Liquidator", () => {
                 expect(usdcBalance2.sub(usdcBalance1)).to.be.gt(0)
             })
 
-            it("non-owner can still do liquidate", async () => {
-                await liquidator.flashLiquidate(
-                    alice.address,
-                    parseUnits("100", usdcDecimals),
-                    parseUnits("1", usdcDecimals),
-                    { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
-                    "0x",
-                )
-
-                const usdcBalance = await usdc.balanceOf(liquidator.address)
-                expect(usdcBalance).to.be.gt(0)
+            it("non-whitelistLiquidator can't do liquidate", async () => {
+                await expect(
+                    liquidator
+                        .connect(davis)
+                        .flashLiquidate(
+                            alice.address,
+                            parseUnits("100", usdcDecimals),
+                            parseUnits("1", usdcDecimals),
+                            { tokenIn: weth.address, fee: await poolWethUsdc.fee(), tokenOut: usdc.address },
+                            "0x",
+                        ),
+                ).to.be.revertedWith("L_OWL")
             })
 
             describe("non-profitable swap", () => {
@@ -892,19 +896,18 @@ describe("Liquidator", () => {
 
             it("profit on meta pool twice", async () => {})
 
-            it("non-owner can still do liquidate", async () => {
-                await liquidator.connect(davis).flashLiquidateThroughCurve({
-                    trader: alice.address,
-                    maxSettlementTokenSpent: parseUnits("100", usdcDecimals),
-                    minSettlementTokenProfit: parseUnits("1", usdcDecimals),
-                    uniPool: poolWethUsdc.address,
-                    crvFactory: factorySidechains.address,
-                    crvPool: plain4Basic.address,
-                    token: UST.address,
-                })
-
-                const usdcBalance = await usdc.balanceOf(liquidator.address)
-                expect(usdcBalance).to.be.gt(0)
+            it("non-whitelistLiquidator can't do liquidate", async () => {
+                await expect(
+                    liquidator.connect(davis).flashLiquidateThroughCurve({
+                        trader: alice.address,
+                        maxSettlementTokenSpent: parseUnits("100", usdcDecimals),
+                        minSettlementTokenProfit: parseUnits("1", usdcDecimals),
+                        uniPool: poolWethUsdc.address,
+                        crvFactory: factorySidechains.address,
+                        crvPool: plain4Basic.address,
+                        token: UST.address,
+                    }),
+                ).to.be.revertedWith("L_OWL")
             })
 
             describe("non-profitable swap", () => {
@@ -1003,6 +1006,24 @@ describe("Liquidator", () => {
             await expect(liquidator.connect(alice).withdraw(usdc.address)).revertedWith(
                 "Ownable: caller is not the owner",
             )
+        })
+    })
+
+    describe("whiteListLiquidator testing", () => {
+        it("add liquidator", async () => {
+            await expect(liquidator.addWhitelistLiquidator(davis.address))
+                .to.emit(liquidator, "WhitelistLiquidatorAdded")
+                .withArgs(davis.address)
+        })
+
+        it("remove liquidator", async () => {
+            await expect(liquidator.removeWhitelistLiquidator(admin.address))
+                .to.emit(liquidator, "WhitelistLiquidatorRemoved")
+                .withArgs(admin.address)
+        })
+
+        it("isWhitelistLiquidator", async () => {
+            expect(await liquidator.isWhitelistLiquidator(admin.address)).to.be.eq(true)
         })
     })
 
