@@ -1,10 +1,12 @@
 ![image](https://user-images.githubusercontent.com/105896/166617434-046adb58-a6ef-4964-b542-a82906c2f4d5.png)
 
-# perp-collateral-liquidator
+# Perp Collateral Liquidator
 
-* Support collateral liquidation through cruve and uniswap without any capital
+* Support collateral liquidation through curve and uniswap without any capital
 * Collateral liquidation profits in settlement token (USDC)
-* Contract owner can withdraw fund (USDC) from the contract
+* Access Control
+    * Contract owner can withdraw fund (USDC) from the contract and do liquidation
+    * Whitelisted EOA can liquidate through the contract to liquidate more efficiently
 
 ### Requirements
 
@@ -21,7 +23,7 @@ Prerequisite:
 1. duplicate `.env.build.example`
 2. rename it to `.env.build`
 3. fill all of the fields
-4. change contract owner if needed from `deploy/001-deploy-liquidator.ts`
+4. change contract owner or whitelisted EOA if needed from `deploy/001-deploy-liquidator.ts`
 
 To deploy the contract:
 
