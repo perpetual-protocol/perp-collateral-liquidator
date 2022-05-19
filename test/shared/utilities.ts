@@ -1,10 +1,10 @@
-import { MockContract } from "@eth-optimism/smock"
+import { FakeContract } from "@defi-wonderland/smock"
 import { LogDescription } from "@ethersproject/abi"
 import { TransactionReceipt } from "@ethersproject/abstract-provider"
 import bn from "bignumber.js"
 import { BaseContract, BigNumber, BigNumberish } from "ethers"
 import { parseUnits } from "ethers/lib/utils"
-import { VirtualToken } from "../../typechain/perp-curie"
+import { TestAggregatorV3, VirtualToken } from "../../typechain/perp-curie"
 import { UniswapV3Pool } from "../../typechain/uniswap-v3-core"
 
 bn.config({ EXPONENTIAL_AT: 999999, DECIMAL_PLACES: 40 })
@@ -51,12 +51,12 @@ export function filterLogs(receipt: TransactionReceipt, topic: string, baseContr
     return receipt.logs.filter(log => log.topics[0] === topic).map(log => baseContract.interface.parseLog(log))
 }
 
-export async function syncIndexToMarketPrice(aggregator: MockContract, pool: UniswapV3Pool) {
+export async function syncIndexToMarketPrice(aggregator: FakeContract<TestAggregatorV3>, pool: UniswapV3Pool) {
     const oracleDecimals = 6
     const slot0 = await pool.slot0()
     const sqrtPrice = slot0.sqrtPriceX96
     const price = formatSqrtPriceX96ToPrice(sqrtPrice, oracleDecimals)
-    aggregator.smocked.latestRoundData.will.return.with(async () => {
+    aggregator.latestRoundData.returns(async () => {
         return [0, parseUnits(price, oracleDecimals), 0, 0, 0]
     })
 }

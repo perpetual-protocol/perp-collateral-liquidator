@@ -3,13 +3,16 @@
         "resolveJsonModule": true,
         "esModuleInterop": true,
         "outDir": "./build",
-        
+        "skipLibCheck": true,
         "sourceMap": true
     },
     "include": [
         "./src",
         "./test",
         "./deploy"
+    ],
+    "exclude": [
+        "node_modules",
     ],
     "files": ["./hardhat.config.ts"]
 }

@@ -8,28 +8,46 @@ import { SignedSafeMath } from "@openzeppelin/contracts/math/SignedSafeMath.sol"
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/SafeCast.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 import { IUniswapV3SwapCallback } from "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3SwapCallback.sol";
+import { IUniswapV3FlashCallback } from "@uniswap/v3-core/contracts/interfaces/callback/IUniswapV3FlashCallback.sol";
 import { IUniswapV3Pool } from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import { TickMath } from "@uniswap/v3-core/contracts/libraries/TickMath.sol";
-import { IPeripheryImmutableState } from "@uniswap/v3-periphery/contracts/interfaces/IPeripheryImmutableState.sol";
 import { ISwapRouter } from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import { PoolAddress } from "@uniswap/v3-periphery/contracts/libraries/PoolAddress.sol";
+import { CallbackValidation } from "@uniswap/v3-periphery/contracts/libraries/CallbackValidation.sol";
 import { IVault } from "@perp/curie-contract/contracts/interface/IVault.sol";
 import { ICollateralManager } from "@perp/curie-contract/contracts/interface/ICollateralManager.sol";
+import { IPoolCurveSwap } from "./Interfaces/IPoolCurveSwap.sol";
+import { IFactorySidechains } from "./Interfaces/IFactorySidechains.sol";
+import { PerpSafeCast } from "./lib/PerpSafeCast.sol";
 
-contract Liquidator is IUniswapV3SwapCallback, Ownable {
+contract Liquidator is IUniswapV3SwapCallback, IUniswapV3FlashCallback, Ownable {
     using SafeMath for uint256;
     using SafeCast for uint256;
     using SignedSafeMath for int256;
     using SafeCast for int256;
+    using PerpSafeCast for int128;
     using SafeERC20 for IERC20;
+
+    event WhitelistLiquidatorAdded(address account);
+    event WhitelistLiquidatorRemoved(address account);
 
     struct SwapCallbackData {
         bytes path;
         address trader;
         address baseToken;
-        address pool;
+        PoolAddress.PoolKey uniPoolKey;
+        uint256 minSettlementAmount;
+    }
+
+    struct FlashCallbackData {
+        address trader;
+        address crvFactory;
+        address crvPool;
+        PoolAddress.PoolKey uniPoolKey;
+        address token;
+        uint256 settlementAmount;
+        uint256 collateralAmount;
         uint256 minSettlementAmount;
     }
 
@@ -39,20 +57,60 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         address tokenOut;
     }
 
-    address internal _vault;
-    address internal _swapRouter;
-    address internal _permissivePairAddress = address(1);
+    struct FlashLiquidateThroughCurveParams {
+        address trader;
+        uint256 maxSettlementTokenSpent;
+        int256 minSettlementTokenProfit;
+        address uniPool;
+        address crvFactory;
+        address crvPool;
+        address token;
+    }
+
+    mapping(address => bool) internal _whitelistLiquidator;
+    address internal immutable _vault;
+    address internal immutable _swapRouter;
+    address internal immutable _uniFactory;
+    address internal immutable _settlementToken;
+    address[] internal _crvFactories;
+
+    //
+    // MODIFIER
+    //
+
+    modifier onlyWhitelistLiquidator() {
+        require(_whitelistLiquidator[msg.sender], "L_OWL");
+        _;
+    }
 
     //
     // EXTERNAL NON-VIEW
     //
 
-    constructor(address vaultArg, address swapRouter) {
+    constructor(
+        address vaultArg,
+        address swapRouterArg,
+        address uniFactoryArg,
+        address[] memory crvFactoriesArg
+    ) {
         _vault = vaultArg;
-        _swapRouter = swapRouter;
+        _swapRouter = swapRouterArg;
+        _uniFactory = uniFactoryArg;
+        _crvFactories = crvFactoriesArg;
 
-        address settlementToken = IVault(_vault).getSettlementToken();
-        IERC20(settlementToken).safeApprove(vaultArg, uint256(-1));
+        address settlementTokenAddress = IVault(vaultArg).getSettlementToken();
+        _settlementToken = settlementTokenAddress;
+        IERC20(settlementTokenAddress).safeApprove(vaultArg, uint256(-1));
+    }
+
+    function addWhitelistLiquidator(address liquidator) external onlyOwner {
+        _whitelistLiquidator[liquidator] = true;
+        emit WhitelistLiquidatorAdded(liquidator);
+    }
+
+    function removeWhitelistLiquidator(address liquidator) external onlyOwner {
+        _whitelistLiquidator[liquidator] = false;
+        emit WhitelistLiquidatorRemoved(liquidator);
     }
 
     function withdraw(address token) external onlyOwner {
@@ -65,33 +123,23 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         int256 amount1Delta,
         bytes calldata _data
     ) external override {
-        // check the caller is the permissivePairAddress
-        // L_NPPA: not permissive pair address
-        require(msg.sender == _permissivePairAddress, "L_NPPA");
+        SwapCallbackData memory data = abi.decode(_data, (SwapCallbackData));
+        CallbackValidation.verifyCallback(_uniFactory, data.uniPoolKey);
 
         // swaps entirely within 0-liquidity regions are not supported -> 0 swap is forbidden
-        // LH_F0S: forbidden 0 swap
+        // L_F0S: forbidden 0 swap
         require((amount0Delta > 0 && amount1Delta < 0) || (amount0Delta < 0 && amount1Delta > 0), "L_F0S");
 
-        SwapCallbackData memory data = abi.decode(_data, (SwapCallbackData));
+        address token0 = data.uniPoolKey.token0;
+        address token1 = data.uniPoolKey.token1;
 
         // positive: liquidator give pool the collateral
         // negative: liquidator receive from pool (pathTail[0], or USDC)
         // liquidator to liquidate the exact amount of collateral token he's expected to send back to the pool
         (uint256 collateralAmount, uint256 firstHopOutAmount, address collateralToken, address firstHopOutToken) =
             amount0Delta > amount1Delta
-                ? (
-                    uint256(amount0Delta),
-                    uint256(-amount1Delta),
-                    IUniswapV3Pool(data.pool).token0(),
-                    IUniswapV3Pool(data.pool).token1()
-                )
-                : (
-                    uint256(amount1Delta),
-                    uint256(-amount0Delta),
-                    IUniswapV3Pool(data.pool).token1(),
-                    IUniswapV3Pool(data.pool).token0()
-                );
+                ? (uint256(amount0Delta), uint256(-amount1Delta), token0, token1)
+                : (uint256(amount1Delta), uint256(-amount0Delta), token1, token0);
 
         if (data.path.length > 0) {
             // multi-hop, perform the rest hops
@@ -114,7 +162,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         IVault(_vault).liquidateCollateral(data.trader, data.baseToken, collateralAmount, false);
 
         // transfer the collateral to uniswap pool
-        IERC20(collateralToken).safeTransfer(data.pool, collateralAmount);
+        IERC20(collateralToken).safeTransfer(msg.sender, collateralAmount);
     }
 
     /// @notice Liquidate tradedr's collateral by using flash swap on uniswap v3
@@ -135,7 +183,7 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         int256 minSettlementTokenProfit,
         Hop memory pathHead,
         bytes memory pathTail
-    ) external onlyOwner {
+    ) external onlyWhitelistLiquidator {
         (uint256 settlement, uint256 collateral) =
             IVault(_vault).getMaxRepaidSettlementAndLiquidatableCollateral(trader, pathHead.tokenIn);
         // L_NL: not liquidatable
@@ -149,38 +197,125 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
             settlement = maxSettlementTokenSpent;
         }
         bool zeroForOne = pathHead.tokenIn < pathHead.tokenOut;
-        address pool = _getPool(pathHead.tokenIn, pathHead.tokenOut, pathHead.fee);
         int256 minSettlementAmount = settlement.toInt256().add(minSettlementTokenProfit);
+
+        PoolAddress.PoolKey memory poolKey = PoolAddress.getPoolKey(pathHead.tokenIn, pathHead.tokenOut, pathHead.fee);
+
         bytes memory data =
             abi.encode(
                 SwapCallbackData({
                     path: pathTail,
                     trader: trader,
                     baseToken: pathHead.tokenIn,
-                    pool: pool,
+                    uniPoolKey: poolKey,
                     minSettlementAmount: minSettlementAmount < 0 ? 0 : minSettlementAmount.toUint256()
                 })
             );
 
-        // set this variable to the pool address we're calling
-        _permissivePairAddress = pool;
-
         // call the swap, which will trigger the swap callback
-        IUniswapV3Pool(pool).swap(
+        IUniswapV3Pool(PoolAddress.computeAddress(_uniFactory, poolKey)).swap(
             address(this),
             zeroForOne,
             collateral.toInt256(),
             (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1),
             data
         );
+    }
 
-        // after swap, we set it back to zero
-        _permissivePairAddress = address(1);
+    /// @inheritdoc IUniswapV3FlashCallback
+    function uniswapV3FlashCallback(
+        uint256 fee0,
+        uint256 fee1,
+        bytes calldata _data
+    ) external override {
+        FlashCallbackData memory data = abi.decode(_data, (FlashCallbackData));
+
+        CallbackValidation.verifyCallback(_uniFactory, data.uniPoolKey);
+
+        _requireValidCrvFactory(data.crvFactory);
+
+        // borrow two assets or borrow 0 assets is forbidden
+        // L_FBA: forbidden borrow amount
+        require((fee0 == 0 || fee1 == 0) || !(fee0 == 0 && fee1 == 0), "L_FBA");
+
+        // liquidate
+        IVault(_vault).liquidateCollateral(data.trader, data.token, data.collateralAmount, false);
+
+        // exchange
+        IPoolCurveSwap crvPool = IPoolCurveSwap(data.crvPool);
+        IFactorySidechains factory = IFactorySidechains(data.crvFactory);
+
+        (int128 fromIndex, int128 toIndex, bool isUnderlying) =
+            factory.get_coin_indices(data.crvPool, data.token, _settlementToken);
+
+        IERC20(data.token).safeApprove(address(crvPool), data.collateralAmount);
+
+        if (isUnderlying) {
+            crvPool.exchange_underlying(fromIndex, toIndex, data.collateralAmount, data.minSettlementAmount);
+        } else {
+            crvPool.exchange(fromIndex, toIndex, data.collateralAmount, data.minSettlementAmount);
+        }
+
+        // return money
+        uint256 uniFee = fee1 > fee0 ? fee1 : fee0;
+        uint256 amountOwned = data.settlementAmount.add(uniFee);
+
+        IERC20(_settlementToken).safeTransfer(msg.sender, amountOwned);
+    }
+
+    function flashLiquidateThroughCurve(FlashLiquidateThroughCurveParams calldata params)
+        external
+        onlyWhitelistLiquidator
+    {
+        (uint256 settlement, uint256 collateral) =
+            IVault(_vault).getMaxRepaidSettlementAndLiquidatableCollateral(params.trader, params.token);
+        // L_NL: not liquidatable
+        require(settlement > 0, "L_NL");
+
+        if (settlement > params.maxSettlementTokenSpent) {
+            collateral = IVault(_vault).getLiquidatableCollateralBySettlement(
+                params.token,
+                params.maxSettlementTokenSpent
+            );
+            settlement = params.maxSettlementTokenSpent;
+        }
+
+        int256 minSettlementAmount = settlement.toInt256().add(params.minSettlementTokenProfit);
+
+        IUniswapV3Pool pool = IUniswapV3Pool(params.uniPool);
+
+        address token0 = IUniswapV3Pool(pool).token0();
+        address token1 = IUniswapV3Pool(pool).token1();
+        uint24 fee = IUniswapV3Pool(pool).fee();
+
+        bool isSettlementTokenAt0 = token0 == _settlementToken;
+
+        IUniswapV3Pool(pool).flash(
+            address(this),
+            isSettlementTokenAt0 ? settlement : 0,
+            isSettlementTokenAt0 ? 0 : settlement,
+            abi.encode(
+                FlashCallbackData({
+                    trader: params.trader,
+                    crvFactory: params.crvFactory,
+                    crvPool: params.crvPool,
+                    uniPoolKey: PoolAddress.getPoolKey(token0, token1, fee),
+                    token: params.token,
+                    settlementAmount: settlement,
+                    collateralAmount: collateral,
+                    minSettlementAmount: minSettlementAmount < 0 ? 0 : minSettlementAmount.toUint256()
+                })
+            )
+        );
     }
 
     //
     // EXETERNAL VIEW
     //
+
+    function isWhitelistLiquidator(address liquidator) external view returns (bool) {
+        return _whitelistLiquidator[liquidator];
+    }
 
     /// @notice Get the most profitable collateral from the liquidatable trader
     /// @param trader The address of the liquidatable trader
@@ -229,19 +364,60 @@ contract Liquidator is IUniswapV3SwapCallback, Ownable {
         return _vault;
     }
 
+    function findCurveFactoryAndPoolForCoins(address from, address to) external view returns (address, address) {
+        uint256 largestBalance = 0;
+        address targetPool = address(0x0);
+        address targetFactory = address(0x0);
+
+        for (uint256 i = 0; i < _crvFactories.length; i++) {
+            IFactorySidechains factory = IFactorySidechains(_crvFactories[i]);
+
+            uint256 index = 0;
+
+            while (index < factory.pool_count()) {
+                address pool = factory.find_pool_for_coins(from, to, index);
+
+                if (pool == address(0x0)) {
+                    break;
+                }
+
+                (int128 fromIndex, , bool isUnderlying) = factory.get_coin_indices(pool, from, to);
+                uint256 tmpBalance = 0;
+                if (isUnderlying) {
+                    tmpBalance = factory.get_underlying_balances(pool)[fromIndex.toUint256()];
+                } else {
+                    tmpBalance = factory.get_balances(pool)[fromIndex.toUint256()];
+                }
+
+                if (tmpBalance > largestBalance) {
+                    largestBalance = tmpBalance;
+                    targetFactory = _crvFactories[i];
+                    targetPool = pool;
+                }
+
+                index++;
+            }
+        }
+
+        return (targetFactory, targetPool);
+    }
+
     //
-    // PRIVATE VIEW
+    //  INTERNAL VIEW
     //
 
-    function _getPool(
-        address tokenA,
-        address tokenB,
-        uint24 fee
-    ) private view returns (address) {
-        return
-            PoolAddress.computeAddress(
-                IPeripheryImmutableState(_swapRouter).factory(),
-                PoolAddress.getPoolKey(tokenA, tokenB, fee)
-            );
+    function _requireValidCrvFactory(address factory) internal view {
+        uint256 len = _crvFactories.length;
+        bool isValid = false;
+
+        for (uint256 i = 0; i < len; i++) {
+            if (factory == _crvFactories[i]) {
+                isValid = true;
+                break;
+            }
+        }
+
+        // L_FCF: forbidden crv factory
+        require(isValid, "L_FCF");
     }
 }

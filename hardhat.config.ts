@@ -1,13 +1,12 @@
 import "@nomiclabs/hardhat-ethers"
+import "@nomiclabs/hardhat-vyper"
 import "@nomiclabs/hardhat-waffle"
 import "@typechain/hardhat"
-import fs from "fs"
 import "hardhat-contract-sizer"
 import "hardhat-deploy"
 import "hardhat-deploy-ethers"
 import "hardhat-gas-reporter"
 import { HardhatUserConfig } from "hardhat/config"
-import path from "path"
 import "solidity-coverage"
 import "./mocha-test"
 import { getMnemonic, getUrl, hardhatForkConfig } from "./scripts/hardhatConfig"
@@ -36,11 +35,19 @@ const config: HardhatUserConfig = {
             },
         },
     },
+    vyper: {
+        compilers: [{ version: "0.2.16" }, { version: "0.3.1" }, { version: "0.2.7" }],
+    },
     networks: {
         hardhat: {
             allowUnlimitedContractSize: true,
             saveDeployments: true,
             ...hardhatForkConfig(),
+            // forking: {
+            //     enabled: true,
+            //     url: "",
+            //     blockNumber: 7479397,
+            // },
         },
         optimismKovan: {
             url: getUrl(CompanionNetwork.optimismKovan),
@@ -104,22 +111,6 @@ const config: HardhatUserConfig = {
         timeout: 120000,
         color: true,
     },
-}
-
-function getAllFiles(dirPath: string, arrayOfFiles: string[] = []) {
-    const files = fs.readdirSync(dirPath)
-
-    arrayOfFiles = arrayOfFiles || []
-
-    files.forEach(function (file) {
-        if (fs.statSync(dirPath + "/" + file).isDirectory()) {
-            arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles)
-        } else {
-            arrayOfFiles.push(path.join(dirPath, "/", file))
-        }
-    })
-
-    return arrayOfFiles
 }
 
 export default config

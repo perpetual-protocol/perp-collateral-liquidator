@@ -1,13 +1,13 @@
 import { Mutex } from "async-mutex"
 import "dotenv/config"
-import { ethers, Wallet } from "ethers"
+import { ContractTransaction, ethers, Wallet } from "ethers"
 import _ from "lodash"
 import fetch from "node-fetch"
 import { Liquidator as LiquidatorContract, Liquidator__factory } from "../typechain"
 import { Vault, Vault__factory } from "../typechain/perp-curie"
 import { IERC20Metadata__factory } from "../typechain/perp-curie/factories/IERC20Metadata__factory"
 import { IERC20Metadata } from "../typechain/perp-curie/IERC20Metadata"
-import { Hop, optitmismEthereum } from "./metadata"
+import { LiquidationType, Metadata } from "./metadata"
 import { sleep } from "./utils"
 
 interface GraphData {
@@ -20,14 +20,22 @@ export type Config = {
     liquidatorContractAddr: string
     maxSettlementTokenSpent: string
     minSettlementTokenProfit: string
-    pathMap: typeof optitmismEthereum
+    pathMap: Metadata
+}
+
+class CustomError extends Error {
+    params: any
+
+    constructor(message: string, { params }) {
+        super(message)
+        this.params = params
+    }
 }
 
 // Alchemy's current rate limit is 660 CU per second, and an eth_call takes 26 CU
 // so we could have around 25 eth_calls per second.
 // https://docs.alchemy.com/alchemy/documentation/rate-limits
 const REQUEST_CHUNK_SIZE = 25
-
 export class Liquidator {
     config: Config
     subgraphEndpoint: string
@@ -37,8 +45,8 @@ export class Liquidator {
     nextNonce: number
     vault: Vault
     settlementToken: IERC20Metadata
-    settlementTokenDeciamls: number
-    pathMap: typeof optitmismEthereum
+    settlementTokenDecimals: number
+    pathMap: Metadata
 
     async setup(config: Config): Promise<void> {
         console.log({
@@ -50,11 +58,10 @@ export class Liquidator {
 
         this.subgraphEndpoint = this.config.subgraphEndPt
 
-        this.pathMap = this.config.pathMap
-
         this.wallet = this.config.wallet
 
         this.nextNonce = await this.wallet.getTransactionCount()
+
         this.mutex = new Mutex()
 
         this.contract = Liquidator__factory.connect(this.config.liquidatorContractAddr, this.wallet)
@@ -62,7 +69,10 @@ export class Liquidator {
         this.vault = Vault__factory.connect(await this.contract.getVault(), this.wallet)
 
         this.settlementToken = IERC20Metadata__factory.connect(await this.vault.getSettlementToken(), this.wallet)
-        this.settlementTokenDeciamls = await this.settlementToken.decimals()
+
+        this.settlementTokenDecimals = await this.settlementToken.decimals()
+
+        this.pathMap = this.config.pathMap
 
         console.log({
             event: "LiquidatorWalletFetched",
@@ -105,13 +115,13 @@ export class Liquidator {
                 continue
             }
 
-            const accounts = [...makers, ...traders]
+            const accounts = _.uniq([...makers, ...traders])
 
             for (const chunkedAccounts of _.chunk(accounts, REQUEST_CHUNK_SIZE)) {
                 await Promise.all(
                     chunkedAccounts.map(account => {
                         console.log({ event: "TryLiquidateAccountCollateral", params: account })
-                        return this.tryLiquidate(account)
+                        return this.liquidate(account)
                     }),
                 )
             }
@@ -179,7 +189,168 @@ export class Liquidator {
         return data
     }
 
-    async tryLiquidate(account: string): Promise<void> {
+    async liquidateCollateral(account: string, targetCollateralAddress: string): Promise<void> {
+        const { method: pathMapMethod, params: pathMapParams } = this.pathMap[targetCollateralAddress]
+
+        switch (pathMapMethod) {
+            case LiquidationType.FlashLiquidate: {
+                if (!pathMapParams) {
+                    const error = new CustomError("CollateralPathSetupIncorrectly", {
+                        params: { account, collateral: targetCollateralAddress },
+                    })
+                    throw error
+                }
+
+                const params: Parameters<typeof this.contract.callStatic.flashLiquidate> = [
+                    account,
+                    ethers.utils.parseUnits(this.config.maxSettlementTokenSpent, this.settlementTokenDecimals),
+                    ethers.utils.parseUnits(this.config.minSettlementTokenProfit, this.settlementTokenDecimals),
+                    pathMapParams.head,
+                    pathMapParams.tail,
+                    { gasLimit: 15_000_000 },
+                ]
+
+                try {
+                    await this.contract.callStatic.flashLiquidate(...params)
+                } catch (e) {
+                    const error = new CustomError(`${pathMapMethod}WillFail`, {
+                        params: {
+                            account,
+                            collateral: targetCollateralAddress,
+                            reason: e.toString(),
+                        },
+                    })
+                    throw error
+                }
+
+                try {
+                    const tx = await this.contract.flashLiquidate(...params)
+                    console.log({
+                        event: `Send${pathMapMethod}TxSucceeded`,
+                        params: {
+                            account,
+                            collateral: targetCollateralAddress,
+                            txHash: tx.hash,
+                        },
+                    })
+
+                    this.nextNonce++
+                    await this.txCheck(tx)
+                } catch (e) {
+                    const error = new CustomError(`Send${pathMapMethod}TxFailed`, {
+                        params: {
+                            account,
+                            collateral: targetCollateralAddress,
+                            reason: e.toString(),
+                        },
+                    })
+                    throw error
+                }
+                break
+            }
+            case LiquidationType.FlashLiquidateThroughCurve: {
+                const [targetFactoryAddress, targetPoolAddress] = await this.contract.findCurveFactoryAndPoolForCoins(
+                    targetCollateralAddress,
+                    this.settlementToken.address,
+                )
+
+                if (targetPoolAddress === ethers.constants.AddressZero) {
+                    const error = new CustomError(`NoLiquidCurvePoolFound`, {
+                        params: { account, targetCollateralAddress },
+                    })
+                    throw error
+                }
+
+                if (targetFactoryAddress === ethers.constants.AddressZero) {
+                    const error = new CustomError(`NoCurveFactoryFound`, {
+                        params: { account, targetFactoryAddress },
+                    })
+                    throw error
+                }
+
+                const params: Parameters<typeof this.contract.callStatic.flashLiquidateThroughCurve> = [
+                    {
+                        trader: account,
+                        crvFactory: targetFactoryAddress,
+                        crvPool: targetPoolAddress,
+                        uniPool: pathMapParams.uniPool,
+                        maxSettlementTokenSpent: ethers.utils.parseUnits(
+                            this.config.maxSettlementTokenSpent,
+                            this.settlementTokenDecimals,
+                        ),
+                        minSettlementTokenProfit: ethers.utils.parseUnits(
+                            this.config.minSettlementTokenProfit,
+                            this.settlementTokenDecimals,
+                        ),
+                        token: targetCollateralAddress,
+                    },
+                    { gasLimit: 15_000_000 },
+                ]
+
+                try {
+                    await this.contract.callStatic.flashLiquidateThroughCurve(...params)
+                } catch (e) {
+                    const error = new CustomError(`${pathMapMethod}WillFail`, {
+                        params: {
+                            account,
+                            collateral: targetCollateralAddress,
+                            reason: e.toString(),
+                        },
+                    })
+                    throw error
+                }
+
+                try {
+                    const tx = await this.contract.flashLiquidateThroughCurve(...params)
+                    console.log({
+                        event: `Send${pathMapMethod}TxSucceeded`,
+                        params: {
+                            account,
+                            collateral: targetCollateralAddress,
+                            txHash: tx.hash,
+                        },
+                    })
+
+                    this.nextNonce++
+                    await this.txCheck(tx)
+                } catch (e) {
+                    const error = new CustomError(`Send${pathMapMethod}TxFailed`, {
+                        params: {
+                            account,
+                            collateral: targetCollateralAddress,
+                            reason: e.toString(),
+                        },
+                    })
+                    throw error
+                }
+                break
+            }
+            default:
+                throw new Error("UnknownLiquidationType")
+        }
+    }
+
+    async txCheck(tx: ContractTransaction): Promise<void> {
+        try {
+            await tx.wait()
+            console.log({
+                event: `TX Succeeded`,
+                params: {
+                    txHash: tx.hash,
+                },
+            })
+        } catch (e) {
+            console.error({
+                event: `TX Failed`,
+                params: {
+                    txHash: tx.hash,
+                    reason: e.toString(),
+                },
+            })
+        }
+    }
+
+    async liquidate(account: string): Promise<void> {
         if (!(await this.vault.isLiquidatable(account))) {
             return
         }
@@ -189,84 +360,15 @@ export class Liquidator {
             Object.keys(this.pathMap),
         )
 
-        if (targetCollateralAddress === "0x0000000000000000000000000000000000000000") {
+        if (targetCollateralAddress === ethers.constants.AddressZero) {
             console.info({ event: "NoProfitableCollateralInPathMap", params: { collateral: targetCollateralAddress } })
             return
         }
 
-        const path = this.pathMap[targetCollateralAddress]
-
-        if (!path) {
-            console.warn({ event: "UnknownCollateral", params: { collateral: targetCollateralAddress } })
-            return
-        }
-
-        const args: [string, ethers.BigNumberish, ethers.BigNumberish, Hop, ethers.BytesLike] = [
-            account,
-            ethers.utils.parseUnits(this.config.maxSettlementTokenSpent, this.settlementTokenDeciamls),
-            ethers.utils.parseUnits(this.config.minSettlementTokenProfit, this.settlementTokenDeciamls),
-            path.head,
-            path.tail,
-        ]
-
         try {
-            await this.contract.callStatic.flashLiquidate(...args)
+            await this.liquidateCollateral(account, targetCollateralAddress)
         } catch (e) {
-            console.warn({
-                event: "FlashLiquidateWillFail",
-                params: {
-                    account,
-                    collateral: targetCollateralAddress,
-                    reason: e.toString(),
-                },
-            })
-            return
-        }
-
-        const tx = await this.mutex.runExclusive(async () => {
-            try {
-                const tx = await this.contract.flashLiquidate(...args)
-                console.log({
-                    event: "SendFlashLiquidateTxSucceeded",
-                    params: {
-                        account,
-                        collateral: targetCollateralAddress,
-                        txHash: tx.hash,
-                    },
-                })
-                this.nextNonce++
-                return tx
-            } catch (e) {
-                console.error({
-                    event: "SendFlashLiquidateTxFailed",
-                    params: {
-                        account,
-                        collateral: targetCollateralAddress,
-                        reason: e.toString(),
-                    },
-                })
-            }
-        })
-
-        try {
-            await tx.wait()
-            console.log({
-                event: "FlashLiquidateSucceeded",
-                params: {
-                    account,
-                    collateral: targetCollateralAddress,
-                    txHash: tx.hash,
-                },
-            })
-        } catch (e) {
-            console.error({
-                event: "FlashLiquidateFailed",
-                params: {
-                    account,
-                    collateral: targetCollateralAddress,
-                    reason: e.toString(),
-                },
-            })
+            console.error({ event: e.name, params: e.params || {} })
         }
     }
 }

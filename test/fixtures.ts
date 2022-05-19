@@ -1,7 +1,14 @@
-import { MockContract } from "@eth-optimism/smock"
+import { FakeContract } from "@defi-wonderland/smock"
 import { parseEther, parseUnits } from "ethers/lib/utils"
-import { ethers } from "hardhat"
-import { Liquidator, TestUniswapV3Callee } from "../typechain"
+import { ethers, waffle } from "hardhat"
+import {
+    FactorySidechains,
+    Liquidator,
+    Plain4Basic,
+    Registry,
+    StableSwap3Pool,
+    TestUniswapV3Callee,
+} from "../typechain"
 import {
     AccountBalance,
     BaseToken,
@@ -13,6 +20,7 @@ import {
     MarketRegistry,
     OrderBook,
     QuoteToken,
+    TestAggregatorV3,
     Vault,
 } from "../typechain/perp-curie"
 import { TestERC20, WETH9 } from "../typechain/test"
@@ -33,15 +41,22 @@ export interface Fixture {
     USDC: TestERC20
     WETH2: TestERC20
     WBTC: TestERC20
+    UST: TestERC20
+    FRAX: TestERC20
+    USDT: TestERC20
 
-    mockedWethAggregator: MockContract
+    mockedWethAggregator: FakeContract<TestAggregatorV3>
     poolWethUsdc: UniswapV3Pool
     poolWbtcWeth: UniswapV3Pool
-    mockedWbtcAggregator: MockContract
+    mockedWbtcAggregator: FakeContract<TestAggregatorV3>
     liquidator: Liquidator
     uniV3Factory: UniswapV3Factory
     uniV3Router: UniswapRouter
     uniV3Callee: TestUniswapV3Callee
+    factorySidechains: FactorySidechains
+    plain4Basic: Plain4Basic
+    stableSwap3Pool: StableSwap3Pool
+    curveRegistry: Registry
     clearingHouse: ClearingHouse
     orderBook: OrderBook
     accountBalance: AccountBalance
@@ -55,10 +70,11 @@ export interface Fixture {
     uniFeeTier: number
     quoteToken: QuoteToken
     baseToken: BaseToken
-    mockedBaseAggregator: MockContract
+    mockedBaseAggregator: FakeContract<TestAggregatorV3>
     baseToken2: BaseToken
-    mockedBaseAggregator2: MockContract
+    mockedBaseAggregator2: FakeContract<TestAggregatorV3>
     pool2: UniswapV3Pool
+    mockedUstAggregator: FakeContract<TestAggregatorV3>
 }
 
 export function createFixture(): () => Promise<Fixture> {
@@ -66,12 +82,15 @@ export function createFixture(): () => Promise<Fixture> {
         // ======================================
         // deploy common
         //
+
+        const [admin] = waffle.provider.getWallets()
+
         const uniFeeTier = 10000 // 1%
 
         const weth9Factory = await ethers.getContractFactory("WETH9")
         const WETH9 = (await weth9Factory.deploy()) as WETH9
 
-        const { WETH: WETH2, WBTC, USDC } = await collateralTokensFixture()
+        const { WETH: WETH2, WBTC, USDC, UST, FRAX, USDT } = await collateralTokensFixture()
         const usdcDecimals = await USDC.decimals()
 
         const collateralPriceFeedFixture = await createCollateralPriceFeedFixture()
@@ -84,6 +103,79 @@ export function createFixture(): () => Promise<Fixture> {
             mockedAggregator: mockedWbtcAggregator,
             chainlinkPriceFeed: wbtcChainlinkPriceFeed,
         }: CollateralPriceFeedFixture = await collateralPriceFeedFixture(await WBTC.decimals(), "1000")
+
+        const {
+            mockedAggregator: mockedUstAggregator,
+            chainlinkPriceFeed: ustChainlinkPriceFeed,
+        }: CollateralPriceFeedFixture = await collateralPriceFeedFixture(await UST.decimals(), "1")
+
+        // ======================================
+        // deploy Curve ecosystem
+        //
+
+        const registryAddressProviderFactory = await ethers.getContractFactory("RegistryAddressProvider")
+        const registryAddressProvider = await registryAddressProviderFactory.deploy(admin.address)
+
+        const curveRegistryFactory = await ethers.getContractFactory("Registry")
+        const curveRegistry = (await curveRegistryFactory.deploy(registryAddressProvider.address)) as Registry
+
+        const factorySidechainsFactory = await ethers.getContractFactory("FactorySidechains")
+        const factorySidechains = (await factorySidechainsFactory.deploy(
+            "0x0000000000000000000000000000000000000001",
+        )) as FactorySidechains
+
+        const contractFactory = await ethers.getContractFactory("StableSwap")
+        const impl1 = await contractFactory.deploy()
+        const impl2 = await contractFactory.deploy()
+        const impl3 = await contractFactory.deploy()
+        const impl4 = await contractFactory.deploy()
+
+        await factorySidechains.set_plain_implementations(4, [
+            impl1.address,
+            impl2.address,
+            impl3.address,
+            impl4.address,
+            "0x0000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000",
+        ])
+
+        await factorySidechains["deploy_plain_pool(string,string,address[4],uint256,uint256)"](
+            "4pool",
+            "4pool",
+            [USDC.address, UST.address, FRAX.address, USDT.address],
+            200,
+            4000000,
+        )
+
+        const poolUstUsdcAddr = await factorySidechains["find_pool_for_coins(address,address)"](
+            UST.address,
+            USDC.address,
+        )
+        const plain4Basic = (await ethers.getContractAt("Plain4Basic", poolUstUsdcAddr)) as Plain4Basic
+
+        const stableSwap3PoolFactory = await ethers.getContractFactory("StableSwap3Pool")
+        const stableSwap3Pool = (await stableSwap3PoolFactory.deploy(
+            [FRAX.address, USDC.address, USDT.address],
+            1000,
+            4000000,
+            5000000000,
+            "3pool",
+            "3pool",
+        )) as StableSwap3Pool
+
+        await curveRegistry.add_pool_without_underlying(
+            stableSwap3Pool.address,
+            3,
+            stableSwap3Pool.address,
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            394770,
+            0,
+            "3pool",
+        )
 
         // ======================================
         // deploy UniV3 ecosystem
@@ -113,7 +205,7 @@ export function createFixture(): () => Promise<Fixture> {
         // deploy perp v2 ecosystem
         //
 
-        let baseToken: BaseToken, quoteToken: QuoteToken, mockedBaseAggregator: MockContract
+        let baseToken: BaseToken, quoteToken: QuoteToken, mockedBaseAggregator: FakeContract<TestAggregatorV3>
         const { token0, mockedAggregator0, token1 } = await tokensFixture()
 
         // we assume (base, quote) == (token0, token1)
@@ -194,6 +286,12 @@ export function createFixture(): () => Promise<Fixture> {
             discountRatio: (0.1e6).toString(),
             depositCap: parseUnits("1000", await WBTC.decimals()),
         })
+        await collateralManager.addCollateral(UST.address, {
+            priceFeed: ustChainlinkPriceFeed.address,
+            collateralRatio: (0.8e6).toString(),
+            discountRatio: (0.1e6).toString(),
+            depositCap: parseUnits("1000000", await UST.decimals()),
+        })
 
         // deploy a pool
         const poolAddr = await uniV3Factory.getPool(baseToken.address, quoteToken.address, uniFeeTier)
@@ -244,13 +342,20 @@ export function createFixture(): () => Promise<Fixture> {
         //
 
         const liquidatorFactory = await ethers.getContractFactory("Liquidator")
-        const liquidator = (await liquidatorFactory.deploy(vault.address, uniV3Router.address)) as Liquidator
+        const liquidator = (await liquidatorFactory.deploy(vault.address, uniV3Router.address, uniV3Factory.address, [
+            factorySidechains.address,
+            curveRegistry.address,
+            // "0x2db0E83599a91b508Ac268a6197b8B14F5e72840", // OP sidechain factory
+        ])) as Liquidator
 
         return {
             USDC,
             WETH9,
             WETH2,
             WBTC,
+            UST,
+            FRAX,
+            USDT,
             mockedWethAggregator,
             poolWethUsdc,
             mockedWbtcAggregator,
@@ -259,6 +364,10 @@ export function createFixture(): () => Promise<Fixture> {
             uniV3Factory,
             uniV3Router,
             uniV3Callee,
+            factorySidechains,
+            plain4Basic,
+            stableSwap3Pool,
+            curveRegistry,
             clearingHouse,
             orderBook,
             accountBalance,
@@ -276,6 +385,7 @@ export function createFixture(): () => Promise<Fixture> {
             baseToken2,
             mockedBaseAggregator2,
             pool2,
+            mockedUstAggregator,
         }
     }
 }

@@ -8,46 +8,85 @@ export type Hop = {
     tokenOut: string
 }
 
+export type UniWay = {
+    method: LiquidationType.FlashLiquidate
+    params: {
+        head: Hop
+        tail: string
+    }
+}
+
+export type CrvWay = {
+    method: LiquidationType.FlashLiquidateThroughCurve
+    params: {
+        uniPool: string
+    }
+}
+
 export const chain = {
     optitmismEthereum: 10,
     optitmismKovan: 69,
 }
 
-export const optitmismEthereum = {
+export enum LiquidationType {
+    FlashLiquidate = "FlashLiquidate",
+    FlashLiquidateThroughCurve = "FlashLiquidateThroughCurve",
+}
+
+export type Metadata = {
+    [key: string]: UniWay | CrvWay
+}
+
+export const optitmismEthereum: Metadata = {
     [mainMetadataOptimism.externalContracts.WETH9]: {
-        head: {
-            tokenIn: mainMetadataOptimism.externalContracts.WETH9,
-            fee: "3000",
-            tokenOut: mainMetadataOptimism.externalContracts.USDC,
+        method: LiquidationType.FlashLiquidate,
+        params: {
+            head: {
+                tokenIn: mainMetadataOptimism.externalContracts.WETH9,
+                fee: "3000",
+                tokenOut: mainMetadataOptimism.externalContracts.USDC,
+            },
+            tail: "0x",
         },
-        tail: "0x",
     },
 }
 
-const optimismKovan = {
+const optimismKovan: Metadata = {
     [mainMetadataOptimismKovan.externalContracts.TestWBTC]: {
-        head: {
-            tokenIn: mainMetadataOptimismKovan.externalContracts.TestWBTC,
-            fee: "3000",
-            tokenOut: mainMetadataOptimismKovan.externalContracts.TestUSDT,
+        method: LiquidationType.FlashLiquidate,
+        params: {
+            head: {
+                tokenIn: mainMetadataOptimismKovan.externalContracts.TestWBTC,
+                fee: "3000",
+                tokenOut: mainMetadataOptimismKovan.externalContracts.TestUSDT,
+            },
+            tail: ethers.utils.solidityPack(
+                ["address", "uint24", "address"],
+                [
+                    mainMetadataOptimismKovan.externalContracts.TestUSDT,
+                    "3000",
+                    mainMetadataOptimismKovan.externalContracts.USDC,
+                ],
+            ),
         },
-        tail: ethers.utils.solidityPack(
-            ["address", "uint24", "address"],
-            [
-                mainMetadataOptimismKovan.externalContracts.TestUSDT,
-                "3000",
-                mainMetadataOptimismKovan.externalContracts.USDC,
-            ],
-        ),
     },
     [mainMetadataOptimismKovan.externalContracts.TestUSDT]: {
-        head: {
-            tokenIn: mainMetadataOptimismKovan.externalContracts.TestUSDT,
-            fee: "3000",
-            tokenOut: mainMetadataOptimismKovan.externalContracts.USDC,
+        method: LiquidationType.FlashLiquidate,
+        params: {
+            head: {
+                tokenIn: mainMetadataOptimismKovan.externalContracts.TestUSDT,
+                fee: "3000",
+                tokenOut: mainMetadataOptimismKovan.externalContracts.USDC,
+            },
+            tail: "0x",
         },
-        tail: "0x",
     },
+    // [mainMetadataOptimismKovan.externalContracts.UST]: {
+    //     method: LiquidationType.FlashLiquidateThroughCurve,
+    //     params: {
+    //         uniPool: "0x0000000000000000000000000000000000000000",
+    //     }
+    // },
 }
 
 export default {

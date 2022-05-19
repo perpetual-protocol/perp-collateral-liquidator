@@ -1,7 +1,7 @@
-import { MockContract, smockit } from "@eth-optimism/smock"
+import { FakeContract, smock } from "@defi-wonderland/smock"
 import { parseUnits } from "ethers/lib/utils"
 import { ethers } from "hardhat"
-import { BaseToken, QuoteToken, VirtualToken } from "../../typechain/perp-curie"
+import { BaseToken, QuoteToken, TestAggregatorV3, VirtualToken } from "../../typechain/perp-curie"
 import { ChainlinkPriceFeed } from "../../typechain/perp-oracle"
 import { TestERC20 } from "../../typechain/test"
 import { UniswapV3Factory, UniswapV3Pool } from "../../typechain/uniswap-v3-core"
@@ -10,12 +10,15 @@ import { isAscendingTokenOrder } from "./utilities"
 interface TokensFixture {
     token0: BaseToken
     token1: QuoteToken
-    mockedAggregator0: MockContract
-    mockedAggregator1: MockContract
+    mockedAggregator0: FakeContract<TestAggregatorV3>
+    mockedAggregator1: FakeContract<TestAggregatorV3>
 }
 
 interface CollateralTokensFixture {
     // address in ascending order
+    USDT: TestERC20
+    FRAX: TestERC20
+    UST: TestERC20
     WBTC: TestERC20
     WETH: TestERC20
     USDC: TestERC20
@@ -29,11 +32,11 @@ interface PoolFixture {
 
 interface BaseTokenFixture {
     baseToken: BaseToken
-    mockedAggregator: MockContract
+    mockedAggregator: FakeContract<TestAggregatorV3>
 }
 
 export interface CollateralPriceFeedFixture {
-    mockedAggregator: MockContract
+    mockedAggregator: FakeContract<TestAggregatorV3>
     chainlinkPriceFeed: ChainlinkPriceFeed
 }
 
@@ -50,9 +53,9 @@ export function createBaseTokenFixture(name: string, symbol: string): () => Prom
     return async (): Promise<BaseTokenFixture> => {
         const aggregatorFactory = await ethers.getContractFactory("TestAggregatorV3")
         const aggregator = await aggregatorFactory.deploy()
-        const mockedAggregator = await smockit(aggregator)
+        const mockedAggregator = (await smock.fake(aggregator)) as FakeContract<TestAggregatorV3>
 
-        mockedAggregator.smocked.decimals.will.return.with(async () => {
+        mockedAggregator.decimals.returns(async () => {
             return 6
         })
 
@@ -79,13 +82,13 @@ export function createCollateralPriceFeedFixture(): (number, string) => Promise<
     return async (tokenDecimal: number, defaultPrice: string): Promise<CollateralPriceFeedFixture> => {
         const aggregatorFactory = await ethers.getContractFactory("TestAggregatorV3")
         const aggregator = await aggregatorFactory.deploy()
-        const mockedAggregator = await smockit(aggregator)
+        const mockedAggregator = (await smock.fake(aggregator)) as FakeContract<TestAggregatorV3>
 
-        mockedAggregator.smocked.decimals.will.return.with(async () => {
+        mockedAggregator.decimals.returns(async () => {
             return tokenDecimal
         })
 
-        mockedAggregator.smocked.latestRoundData.will.return.with(async () => {
+        mockedAggregator.latestRoundData.returns(async () => {
             return [0, parseUnits(defaultPrice, tokenDecimal), 0, 0, 0]
         })
 
@@ -116,8 +119,8 @@ export async function tokensFixture(): Promise<TokensFixture> {
 
     let token0: BaseToken
     let token1: QuoteToken
-    let mockedAggregator0: MockContract
-    let mockedAggregator1: MockContract
+    let mockedAggregator0: FakeContract<TestAggregatorV3>
+    let mockedAggregator1: FakeContract<TestAggregatorV3>
     if (isAscendingTokenOrder(randomToken0.address, randomToken1.address)) {
         token0 = randomToken0
         mockedAggregator0 = randomMockedAggregator0
@@ -141,21 +144,30 @@ export async function collateralTokensFixture(): Promise<CollateralTokensFixture
     const token0 = await createCollateralTokenFixture()
     const token1 = await createCollateralTokenFixture()
     const token2 = await createCollateralTokenFixture()
+    const token3 = await createCollateralTokenFixture()
+    const token4 = await createCollateralTokenFixture()
+    const token5 = await createCollateralTokenFixture()
 
     // usdc > eth > btc
     // to let us create these pools: eth/usdc, and btc/eth
-    const orderedToken = [token0, token1, token2].sort((tokenA, tokenB) =>
+    const orderedToken = [token0, token1, token2, token3, token4, token5].sort((tokenA, tokenB) =>
         tokenA.address.toLowerCase() < tokenB.address.toLowerCase() ? -1 : 1,
     )
 
     await orderedToken[0].__TestERC20_init("WBTC", "WBTC", "8")
     await orderedToken[1].__TestERC20_init("WETH", "WETH", "18")
     await orderedToken[2].__TestERC20_init("USDC", "USDC", "6")
+    await orderedToken[3].__TestERC20_init("UST", "UST", "6")
+    await orderedToken[4].__TestERC20_init("FRAX", "FRAX", "18")
+    await orderedToken[5].__TestERC20_init("USDT", "USDT", "6")
 
     return {
         WBTC: orderedToken[0],
         WETH: orderedToken[1],
         USDC: orderedToken[2],
+        UST: orderedToken[3],
+        FRAX: orderedToken[4],
+        USDT: orderedToken[5],
     }
 }
 
