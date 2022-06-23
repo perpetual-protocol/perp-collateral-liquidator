@@ -76,3 +76,8 @@ To run all the test cases:
 ```bash
 npm run test
 ```
+
+
+---
+
+> If any features/functionalities described in the Perpetual Protocol documentation, code comments, marketing, community discussion or announcements, pre-production or testing code, or other non-production-code sources, vary or differ from the code used in production, in case of any dispute, the code used in production shall prevail.
