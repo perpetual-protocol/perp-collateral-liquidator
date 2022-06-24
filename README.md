@@ -63,7 +63,7 @@ npm i
 npm run build
 
 # on Optimism Kovan (testnet)
-npm run aoo:optimism-kovan
+npm run app:optimism-kovan
 
 # on Optimism (mainnet)
 npm run app:optimism
