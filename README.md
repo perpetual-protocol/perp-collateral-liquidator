@@ -6,6 +6,8 @@
 * Collateral liquidation profits in settlement token (USDC)
 * Contract owner can withdraw fund (USDC) from the contract
 
+![image](./flow.png)
+
 ### Requirements
 
 You should have Node v16 installed. Use [nvm](https://github.com/nvm-sh/nvm) to install it.

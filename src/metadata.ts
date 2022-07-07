@@ -37,6 +37,7 @@ export type Metadata = {
     [key: string]: UniWay | CrvWay
 }
 
+// NOTE: check below optimismKovan variable to see how to configure a swap route
 export const optitmismEthereum: Metadata = {
     [mainMetadataOptimism.externalContracts.WETH9]: {
         method: LiquidationType.FlashLiquidate,
@@ -52,6 +53,7 @@ export const optitmismEthereum: Metadata = {
 }
 
 const optimismKovan: Metadata = {
+    // NOTE: multiple hops (BTC -> USDT -> USDC)
     [mainMetadataOptimismKovan.externalContracts.TestWBTC]: {
         method: LiquidationType.FlashLiquidate,
         params: {
@@ -70,6 +72,7 @@ const optimismKovan: Metadata = {
             ),
         },
     },
+    // NOTE: single hop (USDT -> USDC)
     [mainMetadataOptimismKovan.externalContracts.TestUSDT]: {
         method: LiquidationType.FlashLiquidate,
         params: {
