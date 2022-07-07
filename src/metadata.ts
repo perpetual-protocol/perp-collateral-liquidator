@@ -53,7 +53,7 @@ export const optitmismEthereum: Metadata = {
 }
 
 const optimismKovan: Metadata = {
-    // NOTE: multiple hops (BTC -> USDT -> USDC)
+    // NOTE: swap from Uniswap's pool with multiple hops (BTC -> USDT -> USDC)
     [mainMetadataOptimismKovan.externalContracts.TestWBTC]: {
         method: LiquidationType.FlashLiquidate,
         params: {
@@ -72,7 +72,7 @@ const optimismKovan: Metadata = {
             ),
         },
     },
-    // NOTE: single hop (USDT -> USDC)
+    // NOTE: swap from Uniswap's pool with single hop (USDT -> USDC)
     [mainMetadataOptimismKovan.externalContracts.TestUSDT]: {
         method: LiquidationType.FlashLiquidate,
         params: {
@@ -84,6 +84,7 @@ const optimismKovan: Metadata = {
             tail: "0x",
         },
     },
+    // NOTE: flash loan from Uniswap's pool to borrow out USDC then swap the non-USD collateral back to USDC from curve pool
     // [mainMetadataOptimismKovan.externalContracts.UST]: {
     //     method: LiquidationType.FlashLiquidateThroughCurve,
     //     params: {
