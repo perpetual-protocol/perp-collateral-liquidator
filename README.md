@@ -27,6 +27,10 @@ Prerequisite:
 3. fill all of the fields
 4. change contract owner or whitelisted EOA if needed from `deploy/001-deploy-liquidator.ts`
 
+> ℹ️ Note for .env parameters
+> 
+> `MAX_SETTLEMENT_TOKEN_SPENT` is denominated in USDC. If your liquidation claim exceeds the amount available (e.g. due to another liquidator claiming part or all of the collateral faster than you), your transaction will fail. Setting a lower limit lets you claim a smaller amount and may increase your chances of success.
+
 To deploy the contract:
 
 ```bash
