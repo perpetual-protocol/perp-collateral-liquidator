@@ -8,17 +8,8 @@ import "hardhat-deploy-ethers"
 import "hardhat-gas-reporter"
 import { HardhatUserConfig } from "hardhat/config"
 import "solidity-coverage"
+import { ChainId, CompanionNetwork } from "./constants"
 import { getMnemonic, getUrl, hardhatForkConfig } from "./scripts/hardhatConfig"
-
-enum ChainId {
-    OPTIMISM_CHAIN_ID = 10,
-    OPTIMISM_KOVAN_CHAIN_ID = 69,
-}
-
-enum CompanionNetwork {
-    optimism = "optimism",
-    optimismKovan = "optimismKovan",
-}
 
 const config: HardhatUserConfig = {
     solidity: {

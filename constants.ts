@@ -23,3 +23,13 @@ if (_.isEmpty(OPTIMISM_WEB3_ENDPOINT)) {
 if (_.isEmpty(COMPANION_NETWORK)) {
     console.warn("COMPANION_NETWORK is empty")
 }
+
+export enum ChainId {
+    OPTIMISM_CHAIN_ID = 10,
+    OPTIMISM_KOVAN_CHAIN_ID = 69,
+}
+
+export enum CompanionNetwork {
+    optimism = "optimism",
+    optimismKovan = "optimismKovan",
+}
