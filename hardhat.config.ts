@@ -8,7 +8,6 @@ import "hardhat-deploy-ethers"
 import "hardhat-gas-reporter"
 import { HardhatUserConfig } from "hardhat/config"
 import "solidity-coverage"
-import "./mocha-test"
 import { getMnemonic, getUrl, hardhatForkConfig } from "./scripts/hardhatConfig"
 
 enum ChainId {
