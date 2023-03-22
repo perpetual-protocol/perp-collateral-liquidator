@@ -18,16 +18,16 @@ async function main(): Promise<void> {
     process.on("unhandledRejection", reason => exitUncaughtError(reason))
 
     const liquidator = new Liquidator()
+    const provider = new ethers.providers.StaticJsonRpcProvider(process.env.WEB3_ENDPT)
+    const chainId = (await provider.getNetwork()).chainId
 
     await liquidator.setup({
         subgraphEndPt: process.env.SUBGRAPH_ENDPT,
-        wallet: new Wallet(process.env.LIQUIDATOR_PK).connect(
-            new ethers.providers.StaticJsonRpcProvider(process.env.WEB3_ENDPT, +process.env.NETWORK),
-        ),
+        wallet: new Wallet(process.env.LIQUIDATOR_PK).connect(provider),
         liquidatorContractAddr: process.env.LIQUIDATOR_CONTRACT,
         maxSettlementTokenSpent: process.env.MAX_SETTLEMENT_TOKEN_SPENT,
         minSettlementTokenProfit: process.env.MIN_SETTLEMENT_TOKEN_PROFIT,
-        pathMap: allMetadata[process.env.NETWORK],
+        pathMap: allMetadata[chainId],
     })
     await liquidator.start()
 }

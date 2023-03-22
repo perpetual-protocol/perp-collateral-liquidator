@@ -1,4 +1,4 @@
-import mainMetadataOptimismKovan from "@perp/curie-deployments/optimism-kovan/core/metadata.json"
+import mainMetadataOptimismGoerli from "@perp/curie-deployments/optimism-goerli/core/metadata.json"
 import mainMetadataOptimism from "@perp/curie-deployments/optimism/core/metadata.json"
 import { DeployFunction } from "hardhat-deploy/types"
 import { ChainId } from "../constants"
@@ -17,7 +17,7 @@ const func: DeployFunction = async function (hre: any) {
     const { deployer } = await getNamedAccounts()
 
     const chainId = hre.companionNetworks.fork ? await hre.companionNetworks.fork.getChainId() : await hre.getChainId()
-    const metadata = +chainId === ChainId.OPTIMISM_CHAIN_ID ? mainMetadataOptimism : mainMetadataOptimismKovan
+    const metadata = +chainId === ChainId.OPTIMISM_CHAIN_ID ? mainMetadataOptimism : mainMetadataOptimismGoerli
 
     await deploy("Liquidator", {
         from: deployer,
