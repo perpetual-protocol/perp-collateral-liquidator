@@ -1,9 +1,9 @@
 import { FakeContract, smock } from "@defi-wonderland/smock"
 import { parseUnits } from "ethers/lib/utils"
 import { ethers } from "hardhat"
-import { BaseToken, QuoteToken, TestAggregatorV3, VirtualToken } from "../../typechain/perp-curie"
+import { BaseToken, QuoteToken, VirtualToken } from "../../typechain/perp-curie"
 import { ChainlinkPriceFeed } from "../../typechain/perp-oracle"
-import { TestERC20 } from "../../typechain/test"
+import { TestAggregatorV3, TestERC20 } from "../../typechain/test"
 import { UniswapV3Factory, UniswapV3Pool } from "../../typechain/uniswap-v3-core"
 import { isAscendingTokenOrder } from "./utilities"
 

@@ -1,4 +1,4 @@
-import mainMetadataOptimismKovan from "@perp/curie-deployments/optimism-kovan/core/metadata.json"
+import mainMetadataOptimismGoerli from "@perp/curie-deployments/optimism-goerli/core/metadata.json"
 import mainMetadataOptimism from "@perp/curie-deployments/optimism/core/metadata.json"
 import { ethers } from "ethers"
 
@@ -25,7 +25,7 @@ export type CrvWay = {
 
 export const chain = {
     optitmismEthereum: 10,
-    optitmismKovan: 69,
+    optimismGoerli: 420,
 }
 
 export enum LiquidationType {
@@ -37,7 +37,7 @@ export type Metadata = {
     [key: string]: UniWay | CrvWay
 }
 
-// NOTE: check below optimismKovan variable to see how to configure a swap route
+// NOTE: check below optimismGoerli variable to see how to configure a swap route
 export const optitmismEthereum: Metadata = {
     [mainMetadataOptimism.externalContracts.WETH9]: {
         method: LiquidationType.FlashLiquidate,
@@ -52,40 +52,40 @@ export const optitmismEthereum: Metadata = {
     },
 }
 
-const optimismKovan: Metadata = {
+const optimismGoerli: Metadata = {
     // NOTE: swap from Uniswap's pool with multiple hops (BTC -> USDT -> USDC)
-    [mainMetadataOptimismKovan.externalContracts.TestWBTC]: {
+    [mainMetadataOptimismGoerli.externalContracts.TestWBTC]: {
         method: LiquidationType.FlashLiquidate,
         params: {
             head: {
-                tokenIn: mainMetadataOptimismKovan.externalContracts.TestWBTC,
+                tokenIn: mainMetadataOptimismGoerli.externalContracts.TestWBTC,
                 fee: "3000",
-                tokenOut: mainMetadataOptimismKovan.externalContracts.TestUSDT,
+                tokenOut: mainMetadataOptimismGoerli.externalContracts.TestUSDT,
             },
             tail: ethers.utils.solidityPack(
                 ["address", "uint24", "address"],
                 [
-                    mainMetadataOptimismKovan.externalContracts.TestUSDT,
+                    mainMetadataOptimismGoerli.externalContracts.TestUSDT,
                     "3000",
-                    mainMetadataOptimismKovan.externalContracts.USDC,
+                    mainMetadataOptimismGoerli.externalContracts.USDC,
                 ],
             ),
         },
     },
     // NOTE: swap from Uniswap's pool with single hop (USDT -> USDC)
-    [mainMetadataOptimismKovan.externalContracts.TestUSDT]: {
+    [mainMetadataOptimismGoerli.externalContracts.TestUSDT]: {
         method: LiquidationType.FlashLiquidate,
         params: {
             head: {
-                tokenIn: mainMetadataOptimismKovan.externalContracts.TestUSDT,
+                tokenIn: mainMetadataOptimismGoerli.externalContracts.TestUSDT,
                 fee: "3000",
-                tokenOut: mainMetadataOptimismKovan.externalContracts.USDC,
+                tokenOut: mainMetadataOptimismGoerli.externalContracts.USDC,
             },
             tail: "0x",
         },
     },
     // NOTE: flash loan from Uniswap's pool to borrow out USDC then swap the non-USD collateral back to USDC from curve pool
-    // [mainMetadataOptimismKovan.externalContracts.UST]: {
+    // [mainMetadataOptimismGoerli.externalContracts.UST]: {
     //     method: LiquidationType.FlashLiquidateThroughCurve,
     //     params: {
     //         uniPool: "0x0000000000000000000000000000000000000000",
@@ -95,5 +95,5 @@ const optimismKovan: Metadata = {
 
 export default {
     [chain.optitmismEthereum]: optitmismEthereum,
-    [chain.optitmismKovan]: optimismKovan,
+    [chain.optimismGoerli]: optimismGoerli,
 }

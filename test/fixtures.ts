@@ -20,10 +20,9 @@ import {
     MarketRegistry,
     OrderBook,
     QuoteToken,
-    TestAggregatorV3,
     Vault,
 } from "../typechain/perp-curie"
-import { TestERC20, WETH9 } from "../typechain/test"
+import { TestAggregatorV3, TestERC20, WETH9 } from "../typechain/test"
 import { UniswapV3Factory, UniswapV3Pool } from "../typechain/uniswap-v3-core"
 import { SwapRouter as UniswapRouter } from "../typechain/uniswap-v3-periphery"
 import {
@@ -257,7 +256,7 @@ export function createFixture(): () => Promise<Fixture> {
             accountBalance.address,
             exchange.address,
         )
-        await insuranceFund.setBorrower(vault.address)
+        await insuranceFund.setVault(vault.address)
         await accountBalance.setVault(vault.address)
 
         // deploy collateral manager

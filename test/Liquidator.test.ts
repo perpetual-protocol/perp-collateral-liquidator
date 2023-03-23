@@ -13,8 +13,8 @@ import {
     StableSwap3Pool,
     TestUniswapV3Callee,
 } from "../typechain"
-import { BaseToken, ClearingHouse, Exchange, MarketRegistry, TestAggregatorV3, Vault } from "../typechain/perp-curie"
-import { TestERC20 } from "../typechain/test"
+import { BaseToken, ClearingHouse, Exchange, MarketRegistry, Vault } from "../typechain/perp-curie"
+import { TestAggregatorV3, TestERC20 } from "../typechain/test"
 import { UniswapV3Pool } from "../typechain/uniswap-v3-core"
 import { createFixture, Fixture } from "./fixtures"
 import { deposit, mintAndDeposit } from "./helper/token"
@@ -200,6 +200,8 @@ describe("Liquidator", () => {
         await deposit(bob, vault, 1000000, usdc)
         await deposit(carol, vault, 1000000, usdc)
 
+        await syncIndexToMarketPrice(mockedBaseAggregator, pool)
+
         await clearingHouse.connect(carol).addLiquidity({
             baseToken: baseToken.address,
             base: parseEther("100"),
@@ -211,8 +213,6 @@ describe("Liquidator", () => {
             useTakerBalance: false,
             deadline: ethers.constants.MaxUint256,
         })
-
-        await syncIndexToMarketPrice(mockedBaseAggregator, pool)
 
         // add curve liquidity
         const fraxMillion = parseUnits("1000000", 18)

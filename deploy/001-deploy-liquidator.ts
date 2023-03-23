@@ -1,6 +1,7 @@
-import mainMetadataOptimismKovan from "@perp/curie-deployments/optimism-kovan/core/metadata.json"
+import mainMetadataOptimismGoerli from "@perp/curie-deployments/optimism-goerli/core/metadata.json"
 import mainMetadataOptimism from "@perp/curie-deployments/optimism/core/metadata.json"
 import { DeployFunction } from "hardhat-deploy/types"
+import { ChainId } from "../constants"
 import { Liquidator } from "../typechain"
 
 const liquidatorAddress = []
@@ -14,7 +15,9 @@ const func: DeployFunction = async function (hre: any) {
     const { deploy } = deployments
 
     const { deployer } = await getNamedAccounts()
-    const metadata = +process.env.NETWORK === 10 ? mainMetadataOptimism : mainMetadataOptimismKovan
+
+    const chainId = hre.companionNetworks.fork ? await hre.companionNetworks.fork.getChainId() : await hre.getChainId()
+    const metadata = +chainId === ChainId.OPTIMISM_CHAIN_ID ? mainMetadataOptimism : mainMetadataOptimismGoerli
 
     await deploy("Liquidator", {
         from: deployer,

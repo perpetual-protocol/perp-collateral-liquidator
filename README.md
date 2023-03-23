@@ -34,8 +34,8 @@ Prerequisite:
 To deploy the contract:
 
 ```bash
-# to Optimism Kovan (testnet)
-npm run deploy-contract-optimism-kovan
+# to Optimism Goerli (testnet)
+npm run deploy-contract-optimism-goerli
 
 # to Optimism (mainnet)
 npm run deploy-contract-optimism
@@ -45,7 +45,7 @@ npm run deploy-contract-optimism
 
 Prerequisite:
 1. duplicate `.env.runtime.example`
-2. rename it to `.env.runtime.optimism` (or `.env.runtime.optimism-kovan` for testnet)
+2. rename it to `.env.runtime.optimism` (or `.env.runtime.optimism-goerli` for testnet)
 3. fill all of the fields
 4. setup the swap path at `src/metadata.ts` to deal with the non-USD collateral (to flash loan/swap from a specific pool)
 
@@ -53,8 +53,8 @@ Prerequisite:
 # build contract
 npm run build
 
-# on Optimism Kovan (testnet)
-npm run start:optimism-kovan
+# on Optimism Goerli (testnet)
+npm run start:optimism-goerli
 
 # on Optimism (mainnet)
 npm run start:optimism
@@ -68,8 +68,8 @@ npm run start:optimism
 npm i
 npm run build
 
-# on Optimism Kovan (testnet)
-npm run app:optimism-kovan
+# on Optimism Goerli (testnet)
+npm run app:optimism-goerli
 
 # on Optimism (mainnet)
 npm run app:optimism
