@@ -1,3 +1,4 @@
+import "@nomicfoundation/hardhat-verify"
 import "@nomiclabs/hardhat-ethers"
 import "@nomiclabs/hardhat-vyper"
 import "@nomiclabs/hardhat-waffle"
@@ -6,10 +7,13 @@ import "hardhat-contract-sizer"
 import "hardhat-deploy"
 import "hardhat-deploy-ethers"
 import "hardhat-gas-reporter"
+import dotenv from "dotenv"
 import { HardhatUserConfig } from "hardhat/config"
 import "solidity-coverage"
 import { ChainId, CompanionNetwork } from "./constants"
 import { getMnemonic, getUrl, hardhatForkConfig } from "./scripts/hardhatConfig"
+
+dotenv.config()
 
 const config: HardhatUserConfig = {
     solidity: {
@@ -31,27 +35,13 @@ const config: HardhatUserConfig = {
     networks: {
         hardhat: {
             allowUnlimitedContractSize: true,
-            saveDeployments: true,
-            ...hardhatForkConfig(),
-            // forking: {
-            //     enabled: true,
-            //     url: "",
-            //     blockNumber: 7479397,
-            // },
         },
-        optimismGoerli: {
-            url: getUrl(CompanionNetwork.optimismGoerli),
+        opgoerli: {
+            url: process.env.OPTIMISM_GOERLI_URL,
             accounts: {
-                mnemonic: getMnemonic(CompanionNetwork.optimismGoerli),
+                mnemonic: process.env.MNEMONIC || `0x${process.env.PRIVATE_KEY}` || "",
             },
-            chainId: ChainId.OPTIMISM_GOERLI_CHAIN_ID,
-        },
-        optimism: {
-            url: getUrl(CompanionNetwork.optimism),
-            accounts: {
-                mnemonic: getMnemonic(CompanionNetwork.optimism),
-            },
-            chainId: ChainId.OPTIMISM_CHAIN_ID,
+            chainId: 420,
         },
     },
     namedAccounts: {
@@ -100,6 +90,9 @@ const config: HardhatUserConfig = {
         jobs: 4,
         timeout: 120000,
         color: true,
+    },
+    etherscan: {
+        apiKey: process.env.OPSCAN_API_KEY,
     },
 }
 
