@@ -13,7 +13,7 @@
     "build": "npm run build:contract && npm run typechain && npm run build:app",
     "build:contract": "hardhat compile --no-typechain",
     "build:app": "tsc -p tsconfig-build.json",
-    "deploy-contract:optimism-goerli": "hardhat deploy --network optimismGoerli",
+    "deploy-contract:optimism-goerli": "hardhat deploy --network opgoerli",
     "deploy-contract:optimism": "hardhat deploy --network optimism",
     "app:optimism-goerli": "ENV=optimism-goerli ts-node --files src/index.ts",
     "app:optimism": "ENV=optimism ts-node --files src/index.ts",
