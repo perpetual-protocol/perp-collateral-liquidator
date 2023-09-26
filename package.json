@@ -35,6 +35,7 @@
     "@ethereumjs/common": "2.3.0",
     "@ethereumjs/tx": "3.2.0",
     "@ethereumjs/vm": "5.4.0",
+    "@nomicfoundation/hardhat-verify": "^1.1.1",
     "@nomiclabs/ethereumjs-vm": "4.2.2",
     "@nomiclabs/hardhat-ethers": "2.2.2",
     "@nomiclabs/hardhat-etherscan": "2.1.7",
