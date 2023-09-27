@@ -3,7 +3,7 @@ import "dotenv/config"
 import { ContractTransaction, ethers, Wallet } from "ethers"
 import _ from "lodash"
 import fetch from "node-fetch"
-import { Liquidator as LiquidatorContract, Liquidator__factory } from "../typechain"
+import { Liquidator__factory, Liquidator as LiquidatorContract } from "../typechain"
 import { Vault, Vault__factory } from "../typechain/perp-curie"
 import { IERC20Metadata__factory } from "../typechain/perp-curie/factories/IERC20Metadata__factory"
 import { IERC20Metadata } from "../typechain/perp-curie/IERC20Metadata"
@@ -53,25 +53,16 @@ export class Liquidator {
             event: "SetupLiquidator",
             params: { config },
         })
-
         this.config = config
-
         this.subgraphEndpoint = this.config.subgraphEndPt
-
         this.wallet = this.config.wallet
-
         this.nextNonce = await this.wallet.getTransactionCount()
 
         this.mutex = new Mutex()
-
         this.contract = Liquidator__factory.connect(this.config.liquidatorContractAddr, this.wallet)
-
         this.vault = Vault__factory.connect(await this.contract.getVault(), this.wallet)
-
         this.settlementToken = IERC20Metadata__factory.connect(await this.vault.getSettlementToken(), this.wallet)
-
         this.settlementTokenDecimals = await this.settlementToken.decimals()
-
         this.pathMap = this.config.pathMap
 
         console.log({
