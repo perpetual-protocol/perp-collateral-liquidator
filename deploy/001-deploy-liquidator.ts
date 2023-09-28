@@ -2,8 +2,8 @@ import mainMetadataOptimismGoerli from "@perp/curie-deployments/optimism-goerli/
 import mainMetadataOptimism from "@perp/curie-deployments/optimism/core/metadata.json"
 import { DeployFunction } from "hardhat-deploy/types"
 import { ChainId } from "../constants"
-import { verify } from '../scripts/verify'
 import { Liquidator } from "../typechain"
+import { run } from "hardhat"
 
 const liquidatorAddress = []
 const uniswapV3SwapRouterAddress = "0xE592427A0AEce92De3Edee1F18E0157C05861564"
@@ -48,6 +48,26 @@ const func: DeployFunction = async function (hre: any) {
     // const newOwner = ""
     // const result = await liquidator.transferOwnership(newOwner)
     // console.log(`Owner transferred to ${newOwner}`)
+}
+
+const verify = async (address: string, args: Array<any>) => {
+    console.log("#########################")
+    console.log(`# Verifying  Contract --> ${address}`)
+    try {
+        await run("verify:verify", {
+            address,
+            constructorArguments: [...args],
+        })
+        console.log("# Contract verified!")
+    } catch (error) {
+        if (error.message.toLowerCase().includes("already verified")) {
+            console.log("Already verified!")
+        } else {
+            console.error("## Contract failed to verify --> ", error)
+        }
+    }
+
+    console.log("#########################")
 }
 
 export default func
