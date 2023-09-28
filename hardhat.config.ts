@@ -10,7 +10,7 @@ import "hardhat-deploy"
 import "hardhat-gas-reporter"
 import { HardhatUserConfig } from "hardhat/config"
 import "solidity-coverage"
-import "./mocha-test"
+
 
 dotenv.config()
 
