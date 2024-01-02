@@ -10,25 +10,14 @@ import { getAccounts } from "./theGraph";
 
 // import { uploadJsonFile } from "./s3-cient";
 import { liquidatorAbi, vaultAbi } from "./abis/abis";
+import { stableCoinList } from "./stableCoins";
 
-interface ISTORED_DATA {
-  accounts: string[];
-  lastCoveredBlock: number;
-}
 
 Web3Function.onRun(async (context: Web3FunctionContext) => {
   const { multiChainProvider, storage } = context;
   const provider = multiChainProvider.default();
 
-  const accounts = await getAccounts();
-
-  const callDatas: Array<{ to: string; data: string }> = [];
-
-  const vaultContract = new Contract(
-    "0xvaultaddresshere",
-    vaultAbi,
-    provider
-  ) as Contract;
+  const accounts: string[] = await getAccounts();
 
   const liquidatorContract = new Contract(
     "0xliquidatoraddresshere",
@@ -36,94 +25,65 @@ Web3Function.onRun(async (context: Web3FunctionContext) => {
     provider
   ) as Contract;
 
+  const vaultAddr = await liquidatorContract.getVault();
+  const vaultContract = new Contract(
+    vaultAddr,
+    vaultAbi,
+    provider
+  ) as Contract;
+
+  const clearingHouseAddr = await vaultContract.getClearingHouse();
+  const clearingHouseContract = new Contract(
+    clearingHouseAddr,
+    vaultAbi,
+    provider
+  ) as Contract;
+
+  const uniswapV3Factory = new Contract(
+    "0xuniswapv3address",
+    vaultAbi,
+    provider
+  ) as Contract;
+
+  const quoteToken = await clearingHouseContract.getQuoteToken();
+
   for (let i = 0; i < accounts.length; i += 1) {
     let isLiquidatable = await vaultContract.isLiquidatable(accounts[i])
     if(isLiquidatable){
-      
+      let collateral = await liquidatorContract.getMaxProfitableCollateral(accounts[i]);
+      let [settlement, ] = await vaultContract.getMaxRepaidSettlementAndLiquidatableCollateral(accounts[i], collateral);
+      if(stableCoinList.includes(collateral)){
+        let [curveFactory, curvePool] = await liquidatorContract.findCurveFactoryAndPoolForCoins(collateral, quoteToken)
+        const uniPool = await uniswapV3Factory.getPool(collateral, quoteToken, "10000")
+        await liquidatorContract.flashLiquidateThroughCurve(
+          {    
+            trader: accounts[i],
+            maxSettlementTokenSpent: settlement.toString(),
+            minSettlementTokenProfit: "0",
+            uniPool: uniPool,
+            crvFactory: curveFactory,
+            crvPool: curvePool,
+            token: collateral,
+          }
+        )
+      } else {
+        await liquidatorContract.flashLiquidate(
+          accounts[i],
+          settlement.toString(),
+          "0",
+          { tokenIn: collateral, fee: "10000", tokenOut: quoteToken },
+          "0x"
+        )
+      }    
     }
-    const result = await helperContract.getInfo(slice, comptroller, bamms1);
+  }    
 
-    if (result.length > 0) {
-      console.log("found liquidation candidate", result[0]);
-      const iface = new utils.Interface(bammsAbi);
-
-      callDatas.push({
-        to: result[0].bamm,
-        data: iface.encodeFunctionData("liquidateBorrow", [
-          result[0].account,
-          result[0].repayAmount,
-          result[0].ctoken,
-        ]),
-      });
-    }
-  }
-
-  if (callDatas.length > 0) {
+  if (accounts.length > 0) {
     return {
       canExec: false,
-      message: `Found ${callDatas.length} users to liquidate`,
+      message: `Found ${accounts.length} accounts to liquidate`,
     };
   }
 
   return { canExec: false, message: "No Users to liquidate" };
 });
-
-export async function updateUsers(
-  provider: providers.StaticJsonRpcProvider,
-  storedData: ISTORED_DATA
-): Promise<ISTORED_DATA> {
-  console.log("updating users");
-  const currBlock = (await provider.getBlock("latest")).number - 10;
-  if (currBlock > storedData.lastCoveredBlock) {
-    storedData = await readAllUsers(
-      storedData.lastCoveredBlock,
-      currBlock,
-      storedData,
-      provider
-    );
-  }
-
-  storedData.lastCoveredBlock = currBlock;
-
-  console.log("updateUsers end");
-
-  return storedData;
-  //setTimeout(updateUsers, 1000 * 60);
-}
-
-async function readAllUsers(
-  startBlock: number,
-  lastBlock: number,
-  storedData: ISTORED_DATA,
-  provider: providers.StaticJsonRpcProvider
-): Promise<ISTORED_DATA> {
-  const step = 1000;
-  const unitroller = "0x0F390559F258eB8591C8e31Cf0905E97cf36ACE2";
-  const unitrollerIface = new utils.Interface(unitrollerABI);
-  const topics = [unitrollerIface.getEventTopic("MarketEntered")];
-
-  for (let i = startBlock; i < lastBlock; i += step) {
-    const start = i;
-    let end = i + step - 1;
-    if (end > lastBlock) end = lastBlock;
-    const eventFilter = {
-      address: unitroller,
-      topics,
-      fromBlock: start,
-      toBlock: end,
-    };
-    console.log("blocks: " + eventFilter.fromBlock, eventFilter.toBlock);
-    const transferLogs = await provider.getLogs(eventFilter);
-
-    for (const transferLog of transferLogs) {
-      const transferEvent = unitrollerIface.parseLog(transferLog);
-      const [, account] = transferEvent.args;
-      if (!storedData.accounts.includes(account))
-        storedData.accounts.push(account);
-    }
-  }
-
-  console.log("num users", storedData.accounts.length);
-
-  return storedData;
-}
